@@ -11,6 +11,20 @@ import { createGitProcessAdapter, createWorktreeFleet } from "../../src/worktree
 const fixtureRoot = path.resolve("test/.work/git-hardening");
 const repoRoot = path.join(fixtureRoot, "repo");
 const worktreeRoot = path.join(fixtureRoot, "worktrees");
+
+// The fixture repository lives inside this project's own checkout, so any git
+// command that fails to find the fixture's `.git` would otherwise walk up and
+// operate on the real repository. `initializeRepo` deletes and recreates the
+// fixture, which opens exactly that window. The ceiling stops the upward search
+// so a missing fixture fails loudly instead of silently mutating the checkout,
+// and the identity is supplied through the environment so no `git config` write
+// can escape either. These are inherited by every git process this file starts,
+// including the ones spawned inside the worktree and review adapters.
+process.env.GIT_CEILING_DIRECTORIES = path.resolve(".");
+process.env.GIT_AUTHOR_NAME = "Trestle Tests";
+process.env.GIT_AUTHOR_EMAIL = "trestle-tests@example.invalid";
+process.env.GIT_COMMITTER_NAME = "Trestle Tests";
+process.env.GIT_COMMITTER_EMAIL = "trestle-tests@example.invalid";
 const reviewNonce = "abcdefghijklmnop";
 const authorizedMerge = {
   permissions: { autoMerge: true },
@@ -45,8 +59,6 @@ async function initializeRepo() {
   await rm(fixtureRoot, { recursive: true, force: true });
   await mkdir(repoRoot, { recursive: true });
   git(repoRoot, "init", "-b", "main");
-  git(repoRoot, "config", "user.name", "Trestle Tests");
-  git(repoRoot, "config", "user.email", "trestle-tests@example.invalid");
   await writeFile(path.join(repoRoot, "owned.txt"), "base\n");
   await writeFile(path.join(repoRoot, "other.txt"), "base\n");
   git(repoRoot, "add", ".");
