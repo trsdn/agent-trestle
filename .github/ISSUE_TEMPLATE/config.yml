@@ -1,0 +1,7 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/trsdn/agent-trestle/security/advisories/new
+    about: >
+      Report vulnerabilities privately through GitHub Security Advisories.
+      Never open a public issue for a security problem.

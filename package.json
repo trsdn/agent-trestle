@@ -1,0 +1,66 @@
+{
+  "name": "agent-trestle",
+  "version": "0.1.0",
+  "description": "Local-first orchestration for GitHub Copilot CLI agents.",
+  "type": "module",
+  "author": "trsdn",
+  "license": "MIT",
+  "homepage": "https://github.com/trsdn/agent-trestle#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trsdn/agent-trestle.git"
+  },
+  "bugs": {
+    "url": "https://github.com/trsdn/agent-trestle/issues"
+  },
+  "keywords": [
+    "agent",
+    "orchestration",
+    "github-copilot",
+    "copilot-cli",
+    "ai-agents",
+    "worktree",
+    "local-first",
+    "cli"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "agent-trestle": "./src/cli/agent-trestle.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs",
+    "./audit": "./src/audit/index.mjs",
+    "./config": "./src/config/index.mjs",
+    "./copilot": "./src/copilot/index.mjs",
+    "./dashboard": "./src/dashboard/index.mjs",
+    "./dispatch": "./src/dispatch/index.mjs",
+    "./ownership": "./src/ownership/index.mjs",
+    "./review": "./src/review/index.mjs",
+    "./scheduler": "./src/scheduler/index.mjs",
+    "./state": "./src/state/index.mjs",
+    "./worktrees": "./src/worktrees/index.mjs",
+    "./schemas/config.json": "./schemas/config.schema.json"
+  },
+  "files": [
+    "src/",
+    "schemas/",
+    "templates/",
+    "examples/",
+    "docs/",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "SECURITY.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "scripts": {
+    "lint": "node scripts/lint.mjs",
+    "lint:fix": "node scripts/lint.mjs --fix",
+    "test": "node --test",
+    "test:unit": "node --test test/unit/*.test.mjs",
+    "test:integration": "node --test test/integration/*.test.mjs",
+    "check": "npm run lint && npm test && npm pack --dry-run"
+  }
+}

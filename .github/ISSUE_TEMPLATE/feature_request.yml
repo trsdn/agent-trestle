@@ -1,0 +1,58 @@
+name: Feature request
+description: Propose new or changed behaviour for Agent Trestle.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that Agent Trestle makes hard today?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: >
+        Describe the behaviour you want. If it adds or changes a command,
+        sketch the command surface.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Configuration
+        - Dispatch / routing
+        - Scheduler
+        - Worktree fleet
+        - Review gate
+        - State store
+        - Audit
+        - Dashboard
+        - CLI
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety considerations
+      description: >
+        Agent Trestle defaults to least privilege. Does this proposal require
+        broader permissions, weaker containment, or automatic merge? If so,
+        explain how it stays opt-in.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false

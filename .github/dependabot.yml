@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # The project deliberately ships with no npm dependencies
+  # (see THIRD_PARTY_NOTICES.md). This entry exists so that any dependency
+  # introduced later is tracked from the moment it lands.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - ci
+    groups:
+      github-actions:
+        patterns:
+          - '*'

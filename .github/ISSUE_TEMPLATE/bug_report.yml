@@ -1,0 +1,59 @@
+name: Bug report
+description: Report incorrect or unexpected behaviour in Agent Trestle.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do **not** report security vulnerabilities here.
+        See [SECURITY.md](https://github.com/trsdn/agent-trestle/blob/main/SECURITY.md)
+        for the private reporting channel.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: What happened?
+      description: Describe the incorrect behaviour and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: The exact commands you ran, in order.
+      placeholder: |
+        1. agent-trestle init
+        2. agent-trestle dispatch --project ... --workstream ... --role ...
+        3. ...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: output
+    attributes:
+      label: Command output
+      description: >
+        Re-run the failing command with `--json` if it accepts it and paste the
+        full output, including the error code. Redact any secrets first.
+      render: json
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Agent Trestle version or commit
+      placeholder: 0.1.0 (commit abc1234)
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Output of `node --version`, `git --version`, and your OS.
+      render: shell
+    validations:
+      required: true

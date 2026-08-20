@@ -1,0 +1,11 @@
+{
+  "decisions": {
+    "type": "object"
+  },
+  "tasks": {
+    "type": "object"
+  },
+  "events": {
+    "type": "array"
+  }
+}

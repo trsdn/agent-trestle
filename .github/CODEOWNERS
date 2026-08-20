@@ -1,0 +1,10 @@
+# Default owner for everything in the repository.
+* @trsdn
+
+# Security-sensitive surfaces: containment, review gating, and audit integrity.
+/src/security/   @trsdn
+/src/review/     @trsdn
+/src/audit/      @trsdn
+/src/worktrees/  @trsdn
+/SECURITY.md     @trsdn
+/.github/        @trsdn

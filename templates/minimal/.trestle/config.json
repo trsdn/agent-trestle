@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "project": {
+    "id": "example-project"
+  },
+  "permissions": {
+    "allowAllTools": false,
+    "allowAllPaths": false,
+    "allowAllUrls": false,
+    "nonInteractive": false,
+    "autoMerge": false
+  },
+  "workstreams": [
+    {
+      "id": "main",
+      "path": ".",
+      "roles": [
+        {
+          "id": "builder",
+          "agent": "example-builder"
+        }
+      ]
+    }
+  ]
+}

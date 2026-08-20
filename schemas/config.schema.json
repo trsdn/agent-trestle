@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-trestle.local/schemas/config.schema.json",
+  "title": "Agent Trestle project configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "project", "workstreams"],
+  "properties": {
+    "version": { "const": 1 },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id"],
+      "properties": { "id": { "$ref": "#/$defs/id" } }
+    },
+    "permissions": { "$ref": "#/$defs/permissions" },
+    "copilot": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "binary": { "type": "string", "minLength": 1 },
+        "timeoutMs": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "workstreams": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "roles"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "path": { "type": "string", "minLength": 1 },
+          "permissions": { "$ref": "#/$defs/permissions" },
+          "roles": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "agent"],
+              "properties": {
+                "id": { "$ref": "#/$defs/id" },
+                "agent": { "type": "string", "minLength": 1 },
+                "skills": {
+                  "type": "array",
+                  "items": { "type": "string", "minLength": 1 },
+                  "uniqueItems": true
+                },
+                "permissions": { "$ref": "#/$defs/permissions" }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$"
+    },
+    "permissions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allowAllTools": { "type": "boolean", "default": false },
+        "allowAllPaths": { "type": "boolean", "default": false },
+        "allowAllUrls": { "type": "boolean", "default": false },
+        "nonInteractive": { "type": "boolean", "default": false },
+        "autoMerge": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

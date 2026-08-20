@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "project": { "id": "example-project" },
+  "workstreams": [
+    {
+      "id": "main",
+      "path": ".",
+      "roles": [
+        { "id": "builder", "agent": "example-builder" }
+      ]
+    }
+  ]
+}

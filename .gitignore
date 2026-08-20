@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build / packaging output
+*.tgz
+
+# Agent Trestle runtime state (project-local, never committed)
+.trestle/runs/
+.trestle/audit/
+.trestle/state/
+.trestle/worktrees/
+
+# Worktree fleet and scratch checkouts created by tests and local runs
+/fleet/
+/repo/
+
+# Test scratch space
+test/.work/
+test/.artifacts/
+
+# Editor / OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
