@@ -178,8 +178,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 This is an engineering clean-room-style implementation. A targeted provenance
 audit found no copied implementation in the reviewed scope; that engineering
 finding is **not** formal legal clearance, and it covers the 2026-08-14 baseline
-(commit `eb853c5`) only — files added and modified since then are not yet
-covered. See [the provenance audit](docs/provenance-audit.md).
+only — files added and modified since then are not yet covered. See
+[the provenance audit](docs/provenance-audit.md).
 
 ## License
 

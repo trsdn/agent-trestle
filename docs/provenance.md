@@ -9,7 +9,7 @@ scope. See [the complete audit](provenance-audit.md) for the inventory,
 methodology, findings, dependency status, limitations, and release
 recommendation.
 
-That audit covers the 2026-08-14 baseline (commit `eb853c5`) only. Files added
+That audit covers the 2026-08-14 baseline only. Files added
 and modified since then are not covered; the audit must be re-run over the full
 tree before public release. See
 [Audit currency](provenance-audit.md#audit-currency).

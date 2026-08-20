@@ -43,7 +43,7 @@ are not yet stable and may change without a major version bump.
   are runtime and test artifacts that were previously left untracked in the
   working tree.
 
-## [0.0.0-private] — 2026-08-14
+## 0.0.0-private — 2026-08-14
 
 ### Added
 
@@ -59,5 +59,4 @@ are not yet stable and may change without a major version bump.
   non-interactive execution, and auto-merge all opt-in.
 
 [Unreleased]: https://github.com/trsdn/agent-trestle/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/trsdn/agent-trestle/compare/e7db661...v0.1.0
-[0.0.0-private]: https://github.com/trsdn/agent-trestle/releases/tag/e7db661
+[0.1.0]: https://github.com/trsdn/agent-trestle/releases/tag/v0.1.0

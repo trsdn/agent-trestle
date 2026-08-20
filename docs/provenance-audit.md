@@ -12,8 +12,8 @@ project by the same author
 > **This audit is out of date and its RELEASE recommendation below applies only
 > to the 2026-08-14 baseline, not to current `main`.**
 
-The audited baseline was the uncommitted working tree of 2026-08-14, later
-committed as `eb853c5`. Since that commit the tree has changed substantially:
+The audited baseline was the uncommitted working tree of 2026-08-14. The tree
+has changed substantially since:
 
 | Measure | Baseline (2026-08-14) | Current `main` |
 |---|---:|---:|
@@ -38,11 +38,9 @@ test/unit/review-hardening.test.mjs
 test/unit/secure-file-handle-races.test.mjs
 ```
 
-Reproduce the current delta with:
-
-```bash
-git diff --name-only eb853c5 HEAD
-```
+The delta cannot be reproduced from the public history: the pre-release
+development history is not published, and this repository starts at `v0.1.0`.
+The file counts above are the record of that delta.
 
 Re-run the audit over the full tree before any public release; until then the
 provenance gate referenced by `README.md` and `docs/provenance.md` is satisfied
@@ -71,17 +69,17 @@ advice from qualified counsel. Public release should not be described as
 
 - The repository was on `main` and had **no commits** at audit time. All files
   were untracked, so Git provided no durable creation chronology, review trail,
-  signed authorship record, or per-file attribution history. That baseline has
-  since been committed as `eb853c5`, which establishes the provenance boundary
-  for subsequent changes.
+  signed authorship record, or per-file attribution history. That baseline was
+  the starting point for the published `v0.1.0` tree, which establishes the
+  provenance boundary for subsequent changes.
 - Local filesystem ownership and repository Git identity both identify Torsten
   Mahr, matching the copyright statement in `LICENSE`. Filesystem metadata is
   supporting engineering evidence only; it is not proof of legal ownership.
 - The predecessor project history for the conceptually comparable runtime files
   also identifies Torsten Mahr as author. That common authorship explains
   domain knowledge but is not, by itself, a relicensing grant.
-- The initial Agent Trestle commit `eb853c5` includes this audit, so later
-  changes have a durable provenance boundary.
+- The published `v0.1.0` tree includes this audit, so later changes have a
+  durable provenance boundary.
 
 ## Methodology
 
@@ -186,8 +184,9 @@ accidental copied comment or distinctive prose required removal.
 ## Remaining legal and process limitations
 
 1. The audited baseline had no Git history, so that working tree was the first
-   auditable baseline rather than a traceable development history. Commits made
-   after `eb853c5` are outside this audit; see [Audit currency](#audit-currency).
+   auditable baseline rather than a traceable development history. Changes made
+   after that baseline are outside this audit; see
+   [Audit currency](#audit-currency).
 2. This was a targeted local comparison, not a search across every private,
    public, generated, or previously deleted source the author may have seen.
 3. Textual and structural comparison cannot establish independent creation in
