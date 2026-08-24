@@ -10,6 +10,30 @@ are not yet stable and may change without a major version bump.
 
 ## [Unreleased]
 
+### Added
+
+- Release automation: pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`,
+  which checks that the tag, `package.json` version, and changelog section
+  agree, runs lint and tests, packs the tarball, smoke-tests it in a clean
+  install, and publishes a GitHub release carrying the changelog notes and the
+  tarball as an asset. The workflow can also be dispatched for an existing tag.
+- `scripts/release.mjs`, a dependency-free `verify` and `notes` helper used by
+  the release workflow, covered by `test/unit/release-metadata.test.mjs`.
+- A `Coverage` CI job and `npm run test:coverage`, enforcing line, branch, and
+  function thresholds through the Node built-in coverage reporter. The job
+  closes a gap where `Coverage` was a required status check that no workflow
+  produced, which left every pull request waiting forever.
+
+### Changed
+
+- `--help` now states the version and links the repository and issue tracker,
+  and `--version --json` additionally reports `repository`, `bugs`, and
+  `license`. Plain `--version` still prints only the version string.
+- `SECURITY.md` now documents supported versions, the private advisory
+  reporting path, response targets, reporting scope, and disclosure
+  expectations, replacing the placeholder that pointed at a channel to be
+  configured "after publication".
+
 ## [0.1.0] — 2026-08-20
 
 ### Added
