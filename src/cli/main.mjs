@@ -324,7 +324,28 @@ function writeResult(io, value, json) {
   else io.stdout.write(`${JSON.stringify(serializable(value), null, 2)}\n`);
 }
 
-function usage() {
+/**
+ * Product identity read from the packaged manifest.
+ *
+ * The manifest is the single hand-maintained source, and the release workflow
+ * refuses to publish when it disagrees with the tag, so `--version` and
+ * `--help` cannot drift away from the artifact a user installed.
+ */
+async function packageIdentity() {
+  const pkg = JSON.parse(await readFile(path.resolve(PACKAGE_ROOT, "package.json"), "utf8"));
+  const repository = String(pkg.repository?.url ?? "")
+    .replace(/^git\+/, "")
+    .replace(/\.git$/, "");
+  return {
+    name: pkg.name,
+    version: pkg.version,
+    repository,
+    bugs: pkg.bugs?.url ?? `${repository}/issues`,
+    license: pkg.license,
+  };
+}
+
+function usage(identity) {
   return `Usage: agent-trestle <command> [options]
 
 Commands:
@@ -348,7 +369,11 @@ Global options:
   --root <path> Project root (default: current directory)
   --json        Emit machine-readable output where the command terminates
   --help        Show this help
-  --version     Show package version`;
+  --version     Show package version
+
+${identity.name} ${identity.version} (${identity.license})
+Project:      ${identity.repository}
+Report bugs:  ${identity.bugs}`;
 }
 
 async function validateProject(projectRoot) {
@@ -648,12 +673,12 @@ export async function runCli(argv, io = {}) {
   const { positionals, options } = parseArgs(argv);
   const json = options.json === true;
   if (options.version === true) {
-    const pkg = JSON.parse(await readFile(path.resolve(PACKAGE_ROOT, "package.json"), "utf8"));
-    writeResult(streams, json ? { name: pkg.name, version: pkg.version } : pkg.version, json);
+    const identity = await packageIdentity();
+    writeResult(streams, json ? identity : identity.version, json);
     return EXIT_CODES.SUCCESS;
   }
   if (options.help === true || positionals.length === 0) {
-    writeResult(streams, usage(), false);
+    writeResult(streams, usage(await packageIdentity()), false);
     return EXIT_CODES.SUCCESS;
   }
   const command = positionals[0];

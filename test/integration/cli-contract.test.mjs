@@ -44,6 +44,31 @@ test("CLI identifies only the collision-resistant agent-trestle command", async 
   });
 });
 
+test("CLI reports its own version and links back to its source", async () => {
+  const pkg = JSON.parse(await readFile(path.resolve("package.json"), "utf8"));
+  const repository = pkg.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
+
+  const help = capture();
+  assert.equal(await runCli(["--help"], help.io), EXIT_CODES.SUCCESS);
+  assert.ok(help.stdout().includes(pkg.version), "help states the version");
+  assert.ok(help.stdout().includes(repository), "help links the repository");
+  assert.ok(help.stdout().includes(pkg.bugs.url), "help links the issue tracker");
+
+  const plain = capture();
+  assert.equal(await runCli(["--version"], plain.io), EXIT_CODES.SUCCESS);
+  assert.equal(plain.stdout().trim(), pkg.version);
+
+  const structured = capture();
+  assert.equal(await runCli(["--version", "--json"], structured.io), EXIT_CODES.SUCCESS);
+  assert.deepEqual(JSON.parse(structured.stdout()), {
+    name: pkg.name,
+    version: pkg.version,
+    repository,
+    bugs: pkg.bugs.url,
+    license: pkg.license,
+  });
+});
+
 test("init, validate, and resolve form a working least-privilege flow", async () => {
   await rm(fixtureRoot, { recursive: true, force: true });
   await mkdir(fixtureRoot, { recursive: true });
