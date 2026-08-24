@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { hostname } from 'node:os';
-import { mkdir, readFile, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { after, beforeEach, test } from 'node:test';
 import {
@@ -43,6 +43,34 @@ function store(overrides = {}) {
     idGenerator: () => 'test-id',
     ...overrides,
   });
+}
+
+// The symlink fixtures below live at a fixed path inside the checkout, so a failed
+// security assertion can also mean the fixture was disturbed mid-test. Checking the
+// fixture separately keeps a real regression apart from interference (see issue #25).
+async function describeTree(path) {
+  try {
+    return (await readdir(path)).join(', ') || '<empty>';
+  } catch (error) {
+    return `<${error.code}>`;
+  }
+}
+
+async function assertSymlinkFixture(path, description) {
+  let stats;
+  try {
+    stats = await lstat(path);
+  } catch (error) {
+    assert.fail(
+      `fixture missing: ${description} (${error.code}); `
+        + `${artifactRoot} contains: ${await describeTree(artifactRoot)}`,
+    );
+  }
+  assert.ok(
+    stats.isSymbolicLink(),
+    `fixture broken: ${description} is not a symlink; `
+      + `${artifactRoot} contains: ${await describeTree(artifactRoot)}`,
+  );
 }
 
 function statePath(scope, namespace, key) {
@@ -181,25 +209,29 @@ test('rejects symlink state roots and symlink ancestors while allowing valid non
   const outside = resolve(artifactRoot, 'outside');
   await mkdir(outside, { recursive: true });
   await symlink(outside, roots.workstreamStateRoot);
+  await assertSymlinkFixture(roots.workstreamStateRoot, 'workstream root symlink');
   await assert.rejects(
     store().health(),
     (error) => error.code === 'PATH_TRAVERSAL',
+    'a symlinked state root must be rejected',
   );
 
   await rm(artifactRoot, { recursive: true, force: true });
   await mkdir(resolve(artifactRoot, 'real-parent'), { recursive: true });
   await symlink(resolve(artifactRoot, 'real-parent'), resolve(artifactRoot, 'linked-parent'));
+  await assertSymlinkFixture(resolve(artifactRoot, 'linked-parent'), 'ancestor symlink');
   await assert.rejects(
     store({
       projectStateRoot: resolve(artifactRoot, 'linked-parent/project'),
       workstreamStateRoot: resolve(artifactRoot, 'linked-parent/workstream'),
     }).health(),
     (error) => error.code === 'PATH_TRAVERSAL',
+    'a symlinked ancestor must be rejected',
   );
 
   await rm(artifactRoot, { recursive: true, force: true });
   const state = store();
-  assert.equal((await state.health()).ok, true);
+  assert.equal((await state.health()).ok, true, 'a nonexistent root must be created on demand');
 });
 
 test('fails closed when a validated descendant is swapped for an escaping symlink', async () => {
