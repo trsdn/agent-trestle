@@ -73,6 +73,12 @@ test("spawn adapter reports timeout and the actual termination signal", async ()
   assert.equal(result.signal, "SIGTERM");
 });
 
+// The timeout has to outlast the child's interpreter startup, or SIGTERM
+// arrives before the handler below is installed, the default disposition
+// terminates the process, and the escalation under test never happens.
+// Startup was measured at 18 ms median and 35 ms worst case on an idle
+// machine, and is unbounded on a loaded CI runner; the process-tree test in
+// this file has used 700 ms without flaking, so match it.
 test("spawn adapter escalates to SIGKILL when a timed-out process ignores SIGTERM", async () => {
   const startedAt = Date.now();
   const result = await spawnProcess(
@@ -81,13 +87,15 @@ test("spawn adapter escalates to SIGKILL when a timed-out process ignores SIGTER
       "-e",
       "process.on('SIGTERM', () => process.stdout.write('term-ignored')); setInterval(() => {}, 1000)",
     ],
-    { timeoutMs: 50, killGraceMs: 50 },
+    { timeoutMs: 700, killGraceMs: 50 },
   );
   assert.equal(result.timedOut, true);
   assert.equal(result.exitCode, null);
   assert.equal(result.signal, "SIGKILL");
   assert.equal(result.stdout, "term-ignored");
-  assert.ok(Date.now() - startedAt < 1_000);
+  // Bounds the escalation, not the runner: the assertion above already proves
+  // SIGKILL followed SIGTERM, so this only has to exclude an unbounded wait.
+  assert.ok(Date.now() - startedAt < 5_000);
 });
 
 test(

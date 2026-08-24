@@ -106,7 +106,10 @@ test("supervisor falls back to direct children without process-group support", a
   supervisor.register(child, { detached: false });
 
   processImpl.emit("SIGTERM");
-  await sleep(20);
+  // Waits for the escalation itself rather than for a fixed duration: the
+  // grace and settlement timers are 5 ms each, but a loaded runner fires them
+  // late, and a fixed sleep then asserts against an unfinished sequence.
+  await waitFor(() => child.kills.length === 2 && reRaised.length === 1);
   assert.deepEqual(processImpl.kills, []);
   assert.deepEqual(child.kills, ["SIGTERM", "SIGKILL"]);
   assert.deepEqual(reRaised, ["SIGTERM"]);
@@ -124,7 +127,7 @@ test("supervisor never signals the caller's own process group", async () => {
   supervisor.register(child, { detached: true });
 
   processImpl.emit("SIGHUP");
-  await sleep(20);
+  await waitFor(() => child.kills.length === 2);
   assert.deepEqual(processImpl.kills, []);
   assert.deepEqual(child.kills, ["SIGTERM", "SIGKILL"]);
 });
@@ -146,12 +149,18 @@ test("supervisor leaves an existing library-consumer signal policy in control", 
   const registration = supervisor.register(fakeChild(501), { detached: true });
 
   processImpl.emit("SIGTERM");
-  await sleep(20);
+  // The escalation is observable through the recorded kills; waiting on it
+  // instead of on a duration keeps the assertions below on the far side of the
+  // sequence even when a loaded runner fires the grace timer late.
+  await waitFor(() => processImpl.kills.length === 2);
   assert.equal(externalSignals, 1);
   assert.deepEqual(reRaised, []);
   assert.equal(processImpl.listenerCount("SIGTERM"), 2);
 
   registration.unregister();
-  assert.equal(processImpl.listenerCount("SIGTERM"), 1);
+  // Settlement may still be pending here, and it is settlement that uninstalls
+  // the supervisor's handler, so converge on the end state rather than
+  // assuming it has already been reached.
+  await waitFor(() => processImpl.listenerCount("SIGTERM") === 1);
   processImpl.removeListener("SIGTERM", externalHandler);
 });
