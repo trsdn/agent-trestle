@@ -128,3 +128,59 @@ jobs:
             gh release create "$TAG" "$TARBALL" \
               --title "$TITLE" --notes-file release-notes.md "${flags[@]}"
           fi
+
+  publish-npm:
+    name: Publish to npm
+    needs: [verify, publish]
+    # npm accepts a trusted publisher only for a package that already exists, so
+    # this job stays dormant until the one-time bootstrap described in
+    # CONTRIBUTING.md is done and the repository variable NPM_PUBLISH is set to
+    # "enabled". A published version cannot be taken back, so it runs only after
+    # the GitHub release succeeded.
+    if: vars.NPM_PUBLISH == 'enabled'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Mints the OIDC token that authenticates the publish and signs provenance.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.verify.outputs.tag }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+
+      - name: Use an npm release that supports trusted publishing
+        run: npm install --global npm@^11.5.1
+
+      - name: Publish the tagged version
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          published="$(npm view "agent-trestle@$VERSION" version 2>/dev/null || true)"
+          if [ -n "$published" ]; then
+            echo "agent-trestle@$VERSION is already on the registry; nothing to publish."
+            exit 0
+          fi
+          dist_tag=latest
+          case "$VERSION" in *-*) dist_tag=next ;; esac
+          npm publish --access public --tag "$dist_tag"
+
+      - name: Verify the version resolves from the registry
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          for _ in 1 2 3 4 5; do
+            if [ "$(npm view "agent-trestle@$VERSION" version 2>/dev/null || true)" = "$VERSION" ]; then
+              echo "agent-trestle@$VERSION resolves from the registry."
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "agent-trestle@$VERSION did not resolve from the registry." >&2
+          exit 1

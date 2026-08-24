@@ -43,6 +43,9 @@
     "./worktrees": "./src/worktrees/index.mjs",
     "./schemas/config.json": "./schemas/config.schema.json"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "src/",
     "schemas/",

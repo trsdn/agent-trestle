@@ -10,6 +10,24 @@ are not yet stable and may change without a major version bump.
 
 ## [Unreleased]
 
+### Added
+
+- npm publishing in the release workflow, using npm trusted publishing (OIDC),
+  so no registry token is stored in the repository and every published version
+  carries a provenance attestation. Pre-release versions go to the `next`
+  dist-tag, everything else to `latest`, and re-running a release for an
+  already published version is a no-op. The job stays dormant until the
+  repository variable `NPM_PUBLISH` is set to `enabled`; `CONTRIBUTING.md`
+  documents the one-time bootstrap that npm requires before a trusted publisher
+  can be configured.
+
+### Fixed
+
+- The name-clearance release gate claimed that the npm name had been reserved by
+  publishing `0.1.0`. No version was ever published; the registry entry did not
+  exist. The gate now records the name as unreserved, matching the availability
+  table in the same document.
+
 ## [0.2.0] — 2026-08-24
 
 ### Added
