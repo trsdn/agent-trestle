@@ -153,17 +153,29 @@ bootstrap:
 2. Download the tarball from the newest GitHub release rather than packing
    locally, so the first published bytes are the ones CI built and smoke-tested:
    `gh release download vX.Y.Z --pattern '*.tgz'`.
-3. `npm login`, then `npm publish agent-trestle-X.Y.Z.tgz --access public`.
-   This first version carries no provenance; npm cannot attach one to a
-   pre-packed tarball.
-4. On npmjs.com, open the package settings and add a trusted publisher:
+3. Authenticate against npmjs.com. Two details bite here. A machine whose
+   `~/.npmrc` sets a `registry` other than npmjs.org authenticates against that
+   host instead, so point npm at a scratch config first:
+   `printf 'registry=https://registry.npmjs.org/\n' > /tmp/npmrc-bootstrap` and
+   export `NPM_CONFIG_USERCONFIG=/tmp/npmrc-bootstrap` for every command below.
+   And the account has two-factor authentication, so this step needs an
+   authenticator code and cannot be automated. If `npm login` opens a browser
+   that returns to your profile page without confirming the CLI session, create
+   a granular access token on npmjs.com instead — *Profile menu → Access
+   Tokens → Generate New Token*, read and write, all packages — and append
+   `//registry.npmjs.org/:_authToken=<token>` to the scratch config. Confirm
+   with `npm whoami` before continuing.
+4. `npm publish agent-trestle-X.Y.Z.tgz --access public`. This first version
+   carries no provenance; npm cannot attach one to a pre-packed tarball.
+5. On npmjs.com, open the package settings and add a trusted publisher:
    organization/user `trsdn`, repository `agent-trestle`, workflow filename
    `release.yml`, environment empty. If you set an environment there, the
    `publish-npm` job must declare the same one.
-5. Under *Publishing access*, select *Require two-factor authentication and
+6. Under *Publishing access*, select *Require two-factor authentication and
    disallow tokens*, so the OIDC workflow becomes the only publishing path.
-6. Set the repository variable: `gh variable set NPM_PUBLISH --body enabled`.
-7. Update the install section of [`README.md`](README.md) and the registry row
+   Revoke the bootstrap token and delete the scratch config now.
+7. Set the repository variable: `gh variable set NPM_PUBLISH --body enabled`.
+8. Update the install section of [`README.md`](README.md) and the registry row
    in [name clearance](docs/name-clearance.md), both of which state that the
    package is unpublished.
 
