@@ -133,6 +133,43 @@ artifact is published. Versions below `1.0.0` and any tag with a pre-release
 suffix are marked as pre-releases. Existing tags can be re-published through
 the workflow's manual dispatch input.
 
+### Publishing to npm
+
+The release workflow also publishes to the npm registry, using
+[trusted publishing](https://docs.npmjs.com/trusted-publishers): GitHub mints a
+short-lived OIDC token for the workflow, so no npm token is stored in this
+repository, and npm attaches a provenance attestation to every published
+version. Pre-release versions go to the `next` dist-tag, everything else to
+`latest`. Re-running a release for an already published version is a no-op.
+
+That job only runs when the repository variable `NPM_PUBLISH` is set to
+`enabled`, because npm accepts a trusted publisher only for a package that
+already exists. Claiming the name therefore takes a documented one-time
+bootstrap:
+
+1. Confirm the name decision first. Distributing a package under this name is
+   the step that carries trademark exposure, and the gate in
+   [name clearance](docs/name-clearance.md) is not fully satisfied.
+2. Download the tarball from the newest GitHub release rather than packing
+   locally, so the first published bytes are the ones CI built and smoke-tested:
+   `gh release download vX.Y.Z --pattern '*.tgz'`.
+3. `npm login`, then `npm publish agent-trestle-X.Y.Z.tgz --access public`.
+   This first version carries no provenance; npm cannot attach one to a
+   pre-packed tarball.
+4. On npmjs.com, open the package settings and add a trusted publisher:
+   organization/user `trsdn`, repository `agent-trestle`, workflow filename
+   `release.yml`, environment empty. If you set an environment there, the
+   `publish-npm` job must declare the same one.
+5. Under *Publishing access*, select *Require two-factor authentication and
+   disallow tokens*, so the OIDC workflow becomes the only publishing path.
+6. Set the repository variable: `gh variable set NPM_PUBLISH --body enabled`.
+7. Update the install section of [`README.md`](README.md) and the registry row
+   in [name clearance](docs/name-clearance.md), both of which state that the
+   package is unpublished.
+
+From the next tag onwards, publishing is fully automated and no longer touches
+a maintainer's credentials.
+
 ## Documentation
 
 Documentation lives in [`docs/`](docs). Prose wraps at 80 columns, matching

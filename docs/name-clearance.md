@@ -52,12 +52,12 @@ The gate below separates two decisions that were previously conflated:
 publishing the source, and distributing a package under the name. Trademark
 exposure attaches mainly to the second.
 
-| # | Condition | Status at 2026-08-20 |
+| # | Condition | Status at 2026-08-24 |
 |---|---|---|
-| 1 | reserve the GitHub and npm `agent-trestle` identifiers | GitHub reserved; npm reserved by publishing `0.1.0` |
+| 1 | reserve the GitHub and npm `agent-trestle` identifiers | GitHub reserved; npm **not** reserved, the name was still unclaimed on 2026-08-24 |
 | 2 | authoritative USPTO/EUIPO and national-register search | **not performed** |
 | 3 | likelihood-of-confusion assessment where required | **not performed** |
-| 4 | recheck exact-name registry availability | done 2026-08-20, see the table above |
+| 4 | recheck exact-name registry availability | done 2026-08-20; npm rechecked 2026-08-24 |
 | 5 | confirm the independent source-provenance gate | see [provenance audit](provenance-audit.md); covers the baseline only |
 
 Conditions 2 and 3 require qualified counsel and remain outstanding. The
