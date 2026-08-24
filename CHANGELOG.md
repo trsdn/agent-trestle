@@ -10,6 +10,17 @@ are not yet stable and may change without a major version bump.
 
 ## [Unreleased]
 
+### Fixed
+
+- A failed state-root initialisation no longer leaves directory creation running
+  in the background. `health()` pinned the project, workstream, and config roots
+  with `Promise.all`, which rejects on the first failure without stopping the
+  others, so a caller that cleared its state root after a rejection raced the
+  pins that were still creating their directories and saw a spurious
+  `ENOTEMPTY`. Pins now settle before the failure is rethrown, and the pins that
+  did succeed are released instead of dropped, which also closes a directory
+  descriptor that leaked on every failed initialisation.
+
 ## [0.2.1] — 2026-08-24
 
 This release ships no code changes. It is the first version published to npm
