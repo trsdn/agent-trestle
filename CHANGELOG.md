@@ -10,6 +10,8 @@ are not yet stable and may change without a major version bump.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-24
+
 ### Added
 
 - Release automation: pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`,
