@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -232,6 +233,37 @@ test('rejects symlink state roots and symlink ancestors while allowing valid non
   await rm(artifactRoot, { recursive: true, force: true });
   const state = store();
   assert.equal((await state.health()).ok, true, 'a nonexistent root must be created on demand');
+});
+
+// A rejected root initialisation used to leave the remaining pins creating their
+// directories in the background. Callers that clear the state root after a failed
+// health() then raced those mkdirs and saw a spurious ENOTEMPTY (issue #25).
+// The sibling roots are nested deliberately: creating them costs many more
+// syscalls than rejecting the shallow symlinked root, so before the fix they
+// could not yet exist at the moment health() rejected.
+test('settles every root pin before a failed initialisation rejects', async () => {
+  const nested = 'a/b/c/d/e/f/g/h/i/j/k/l/m/n/o/p/q/r/s/t';
+  const projectStateRoot = resolve(artifactRoot, nested, 'project');
+  const configRoot = resolve(artifactRoot, nested, 'config');
+  const outside = resolve(artifactRoot, 'outside');
+  await mkdir(outside, { recursive: true });
+  await symlink(outside, roots.workstreamStateRoot);
+
+  await assert.rejects(
+    store({ projectStateRoot, configRoot }).health(),
+    (error) => error.code === 'PATH_TRAVERSAL',
+    'a symlinked state root must be rejected',
+  );
+
+  // Synchronous on purpose. Awaiting anything here would hand a still-pending
+  // pin the event-loop turn it needs to land its mkdir, which is exactly the
+  // outstanding work this test exists to rule out.
+  assert.ok(existsSync(projectStateRoot), 'the project pin must settle before health() rejects');
+  assert.ok(existsSync(configRoot), 'the config pin must settle before health() rejects');
+
+  // The cleanup that failed intermittently while that work was still in flight.
+  await rm(artifactRoot, { recursive: true, force: true });
+  assert.equal(existsSync(artifactRoot), false, 'a settled failure must leave a removable tree');
 });
 
 test('fails closed when a validated descendant is swapped for an escaping symlink', async () => {

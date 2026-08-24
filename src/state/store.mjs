@@ -3,7 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, readdir, rename, rm } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { pinDirectory, verifyDescendant, verifyPinnedDirectory } from '../security/path-security.mjs';
+import { pinDirectory, releasePin, verifyDescendant, verifyPinnedDirectory } from '../security/path-security.mjs';
 
 const DEFAULT_VERSION = 1;
 const LOCK_RETRY_MS = 10;
@@ -722,11 +722,25 @@ export class TrestleStateStore {
   async #initializeRoots() {
     if (this.rootPins) return this.rootPins;
     if (!this.rootPinsPromise) {
-      this.rootPinsPromise = Promise.all([
+      // Every pin must settle before this rejects. Promise.all surfaces the
+      // first failure while the remaining pins are still creating their
+      // directories, so a caller that reacts to the rejection by clearing the
+      // state root races those pending mkdirs and sees a spurious ENOTEMPTY.
+      // Settling first also lets the pins that did succeed hand back their
+      // descriptors, which Promise.all leaks on every failed initialisation.
+      this.rootPinsPromise = Promise.allSettled([
         pinDirectory(this.projectStateRoot, { create: true }),
         pinDirectory(this.workstreamStateRoot, { create: true }),
         pinDirectory(this.configRoot, { create: true }),
-      ]).then(([project, workstream, config]) => {
+      ]).then(async (results) => {
+        const failure = results.find((result) => result.status === 'rejected');
+        if (failure) {
+          for (const result of results) {
+            if (result.status === 'fulfilled') await releasePin(result.value);
+          }
+          throw failure.reason;
+        }
+        const [project, workstream, config] = results.map((result) => result.value);
         this.rootPins = { project, workstream, config };
         return this.rootPins;
       });
