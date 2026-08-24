@@ -144,28 +144,44 @@ version. Pre-release versions go to the `next` dist-tag, everything else to
 
 That job only runs when the repository variable `NPM_PUBLISH` is set to
 `enabled`, because npm accepts a trusted publisher only for a package that
-already exists. Claiming the name therefore takes a documented one-time
-bootstrap:
+already exists. The name was claimed on 2026-08-24 by publishing
+`agent-trestle@0.2.0` from a maintainer account, and `NPM_PUBLISH` has been
+`enabled` ever since. That bootstrap is done and does not need repeating unless
+the package is renamed, in which case:
 
-1. Confirm the name decision first. Distributing a package under this name is
-   the step that carries trademark exposure, and the gate in
+1. Confirm the name decision first. Distributing a package under a name is the
+   step that carries trademark exposure, and the gate in
    [name clearance](docs/name-clearance.md) is not fully satisfied.
 2. Download the tarball from the newest GitHub release rather than packing
    locally, so the first published bytes are the ones CI built and smoke-tested:
    `gh release download vX.Y.Z --pattern '*.tgz'`.
-3. `npm login`, then `npm publish agent-trestle-X.Y.Z.tgz --access public`.
-   This first version carries no provenance; npm cannot attach one to a
-   pre-packed tarball.
-4. On npmjs.com, open the package settings and add a trusted publisher:
+3. Authenticate against npmjs.com. A machine whose `~/.npmrc` sets a `registry`
+   other than npmjs.org authenticates against that host instead, so point npm at
+   a scratch config first:
+   `printf 'registry=https://registry.npmjs.org/\n' > /tmp/npmrc-bootstrap` and
+   export `NPM_CONFIG_USERCONFIG=/tmp/npmrc-bootstrap` for every command below.
+   Use `npm login --auth-type=legacy`, which prompts for the authenticator code
+   in the terminal. Do not use the default `--auth-type=web` while already
+   signed in to npmjs.com in the browser: npm sends you to
+   `/login?next=/login/cli/<uuid>`, the site drops the `next` parameter for an
+   authenticated session, and `/login/cli/<uuid>` then answers `Unauthorized`
+   while the CLI polls forever. A granular access token with *read and write*
+   on *all packages* works too, appended as
+   `//registry.npmjs.org/:_authToken=<token>`; because the account enforces 2FA
+   for publishing, such a token must have *Bypass 2FA* set. Confirm with
+   `npm whoami` before continuing.
+4. `npm publish agent-trestle-X.Y.Z.tgz --access public`. This first version
+   carries no provenance; npm cannot attach one to a pre-packed tarball.
+5. On npmjs.com, open the package settings and add a trusted publisher:
    organization/user `trsdn`, repository `agent-trestle`, workflow filename
    `release.yml`, environment empty. If you set an environment there, the
    `publish-npm` job must declare the same one.
-5. Under *Publishing access*, select *Require two-factor authentication and
+6. Under *Publishing access*, select *Require two-factor authentication and
    disallow tokens*, so the OIDC workflow becomes the only publishing path.
-6. Set the repository variable: `gh variable set NPM_PUBLISH --body enabled`.
-7. Update the install section of [`README.md`](README.md) and the registry row
-   in [name clearance](docs/name-clearance.md), both of which state that the
-   package is unpublished.
+   Revoke the bootstrap token and delete the scratch config now.
+7. Set the repository variable: `gh variable set NPM_PUBLISH --body enabled`.
+8. Update the install section of [`README.md`](README.md) and the registry row
+   in [name clearance](docs/name-clearance.md).
 
 From the next tag onwards, publishing is fully automated and no longer touches
 a maintainer's credentials.

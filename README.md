@@ -47,7 +47,15 @@ problems that a prompt cannot solve:
 
 ## Install
 
-The package is not yet published to npm. Install it from a local clone:
+```bash
+npm install -g agent-trestle
+```
+
+The executable is intentionally named only `agent-trestle`, never `trestle`, to
+avoid colliding with existing npm packages that already install a `trestle`
+binary.
+
+To work on agent-trestle itself, install it from a local clone:
 
 ```bash
 git clone https://github.com/trsdn/agent-trestle.git
@@ -55,12 +63,8 @@ cd agent-trestle
 npm link          # exposes the `agent-trestle` binary
 ```
 
-The executable is intentionally named only `agent-trestle`, never `trestle`, to
-avoid colliding with existing npm packages that already install a `trestle`
-binary.
-
 Tagged releases also attach a packed tarball, so a release can be installed
-without a clone:
+without npm or a clone:
 
 ```bash
 npm install -g https://github.com/trsdn/agent-trestle/releases/download/vX.Y.Z/agent-trestle-X.Y.Z.tgz

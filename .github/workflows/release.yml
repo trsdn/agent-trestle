@@ -157,6 +157,7 @@ jobs:
         run: npm install --global npm@^11.5.1
 
       - name: Publish the tagged version
+        id: publish
         env:
           VERSION: ${{ needs.verify.outputs.version }}
         run: |
@@ -164,11 +165,13 @@ jobs:
           published="$(npm view "agent-trestle@$VERSION" version 2>/dev/null || true)"
           if [ -n "$published" ]; then
             echo "agent-trestle@$VERSION is already on the registry; nothing to publish."
+            echo "published=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           dist_tag=latest
           case "$VERSION" in *-*) dist_tag=next ;; esac
           npm publish --access public --tag "$dist_tag"
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
       - name: Verify the version resolves from the registry
         env:
@@ -184,3 +187,26 @@ jobs:
           done
           echo "agent-trestle@$VERSION did not resolve from the registry." >&2
           exit 1
+
+      - name: Confirm the publish was tokenless
+        # This repository stores no npm credential and never passes
+        # --provenance, so a provenance attestation can only have come from
+        # trusted publishing. Its absence means the trusted publisher on
+        # npmjs.com is missing or does not match this workflow, and the release
+        # must fail loudly rather than leave an unattested version behind.
+        if: steps.publish.outputs.published == 'true'
+        env:
+          VERSION: ${{ needs.verify.outputs.version }}
+        run: |
+          set -euo pipefail
+          attestation=""
+          for _ in 1 2 3 4 5; do
+            attestation="$(npm view "agent-trestle@$VERSION" dist.attestations.url 2>/dev/null || true)"
+            [ -n "$attestation" ] && break
+            sleep 10
+          done
+          if [ -z "$attestation" ]; then
+            echo "::error::agent-trestle@$VERSION carries no provenance attestation, so it was not published through trusted publishing. Register the trusted publisher for this package on npmjs.com; see the 'Publishing to npm' section of CONTRIBUTING.md."
+            exit 1
+          fi
+          echo "Provenance attestation: $attestation"
