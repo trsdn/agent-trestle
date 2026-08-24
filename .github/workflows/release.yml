@@ -1,0 +1,130 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to build and publish, for example v0.1.0
+        required: true
+
+# Least privilege by default; only the publishing job is granted write access.
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Verify release
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.identity.outputs.tag }}
+      version: ${{ steps.identity.outputs.version }}
+      tarball: ${{ steps.pack.outputs.tarball }}
+      prerelease: ${{ steps.identity.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Resolve release identity from the tag
+        id: identity
+        env:
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          prerelease=false
+          case "$version" in 0.*|*-*) prerelease=true ;; esac
+          {
+            echo "tag=$TAG"
+            echo "version=$version"
+            echo "prerelease=$prerelease"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify the tag, package version, and changelog agree
+        run: node scripts/release.mjs verify --tag "${{ steps.identity.outputs.tag }}"
+
+      - run: npm run lint
+
+      - run: npm test
+
+      - name: Build the release tarball
+        id: pack
+        run: |
+          set -euo pipefail
+          tarball="$(npm pack --silent)"
+          echo "tarball=$tarball" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke-test the built artifact in a clean environment
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          VERSION: ${{ steps.identity.outputs.version }}
+          PROJECT_URL: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -euo pipefail
+          consumer="$(mktemp -d)"
+          tarball="$PWD/$TARBALL"
+          cd "$consumer"
+          npm init -y --silent > /dev/null
+          npm install --silent --ignore-scripts "$tarball"
+          bin="$consumer/node_modules/.bin/agent-trestle"
+          test "$("$bin" --version)" = "$VERSION"
+          "$bin" --help | grep -Fq "$PROJECT_URL"
+          "$bin" --help | grep -Fq "$PROJECT_URL/issues"
+          "$bin" --version --json | grep -Fq "\"version\":\"$VERSION\""
+
+      - name: Generate release notes from the changelog
+        run: |
+          node scripts/release.mjs notes \
+            --tag "${{ steps.identity.outputs.tag }}" \
+            --out release-notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ steps.identity.outputs.version }}
+          path: |
+            ${{ steps.pack.outputs.tarball }}
+            release-notes.md
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish GitHub release
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.verify.outputs.version }}
+
+      - name: Create or update the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ needs.verify.outputs.tag }}
+          TITLE: Agent Trestle ${{ needs.verify.outputs.version }}
+          TARBALL: ${{ needs.verify.outputs.tarball }}
+          PRERELEASE: ${{ needs.verify.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          flags=()
+          if [ "$PRERELEASE" = "true" ]; then flags+=(--prerelease); fi
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release edit "$TAG" --title "$TITLE" --notes-file release-notes.md "${flags[@]}"
+            gh release upload "$TAG" "$TARBALL" --clobber
+          else
+            gh release create "$TAG" "$TARBALL" \
+              --title "$TITLE" --notes-file release-notes.md "${flags[@]}"
+          fi
