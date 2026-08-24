@@ -10,6 +10,12 @@ are not yet stable and may change without a major version bump.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-08-24
+
+This release ships no code changes. It is the first version published to npm
+through the automated pipeline, so unlike `0.2.0` it carries a provenance
+attestation that ties the published artifact to the workflow run that built it.
+
 ### Added
 
 - npm publishing in the release workflow, using npm trusted publishing (OIDC),
@@ -17,16 +23,24 @@ are not yet stable and may change without a major version bump.
   carries a provenance attestation. Pre-release versions go to the `next`
   dist-tag, everything else to `latest`, and re-running a release for an
   already published version is a no-op. The job stays dormant until the
-  repository variable `NPM_PUBLISH` is set to `enabled`; `CONTRIBUTING.md`
-  documents the one-time bootstrap that npm requires before a trusted publisher
-  can be configured.
+  repository variable `NPM_PUBLISH` is set to `enabled`.
+- A release check that fails the run when a version it just published carries
+  no provenance attestation. Trusted publisher configuration lives on npmjs.com
+  and npm exposes no API to read it back, so a missing or mismatched publisher
+  would otherwise degrade silently into an unattested release.
+
+### Changed
+
+- `agent-trestle` installs from npm: `npm install -g agent-trestle`. The clone
+  route is retained for working on Agent Trestle itself and the release tarball
+  for installing without a registry.
 
 ### Fixed
 
-- The name-clearance release gate claimed that the npm name had been reserved by
-  publishing `0.1.0`. No version was ever published; the registry entry did not
-  exist. The gate now records the name as unreserved, matching the availability
-  table in the same document.
+- The name-clearance release gate claimed that the npm name had been reserved
+  by publishing `0.1.0`. No version was ever published at that point. The gate
+  now records the reservation that `0.2.0` actually made, matching the
+  availability table in the same document.
 
 ## [0.2.0] — 2026-08-24
 
@@ -102,5 +116,7 @@ are not yet stable and may change without a major version bump.
 - Least-privilege permission defaults, with unrestricted tools, paths, URLs,
   non-interactive execution, and auto-merge all opt-in.
 
-[Unreleased]: https://github.com/trsdn/agent-trestle/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/trsdn/agent-trestle/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/trsdn/agent-trestle/compare/v0.2.0...v0.2.1
+[0.2.0]: https://github.com/trsdn/agent-trestle/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/trsdn/agent-trestle/releases/tag/v0.1.0

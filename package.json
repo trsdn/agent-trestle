@@ -1,6 +1,6 @@
 {
   "name": "agent-trestle",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Local-first orchestration for GitHub Copilot CLI agents.",
   "type": "module",
   "author": "trsdn",
