@@ -54,7 +54,7 @@ exposure attaches mainly to the second.
 
 | # | Condition | Status at 2026-08-24 |
 |---|---|---|
-| 1 | reserve the GitHub and npm `agent-trestle` identifiers | GitHub reserved; npm **not** reserved, the name was still unclaimed on 2026-08-24 |
+| 1 | reserve the GitHub and npm `agent-trestle` identifiers | GitHub reserved; npm reserved on 2026-08-24 by publishing `agent-trestle@0.2.0` |
 | 2 | authoritative USPTO/EUIPO and national-register search | **not performed** |
 | 3 | likelihood-of-confusion assessment where required | **not performed** |
 | 4 | recheck exact-name registry availability | done 2026-08-20; npm rechecked 2026-08-24 |
