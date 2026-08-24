@@ -21,8 +21,8 @@ are no backports to earlier tags.
 
 | Version | Supported |
 | --- | --- |
-| Latest `0.1.x` release and `main` | Yes |
-| Any earlier tag | No — upgrade first |
+| Latest release and `main` | Yes |
+| Any earlier release | No — upgrade first |
 
 ## Reporting a vulnerability
 
