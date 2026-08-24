@@ -58,3 +58,17 @@ jobs:
           node-version-file: .nvmrc
       - name: Verify publishable contents
         run: npm pack --dry-run
+
+  coverage:
+    name: Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      # Thresholds run on the .nvmrc runtime only: the built-in coverage
+      # threshold flags require Node 22, while the suite itself still has to
+      # pass on the supported Node 20 floor.
+      - name: Enforce coverage thresholds
+        run: npm run test:coverage
