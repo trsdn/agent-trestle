@@ -40,6 +40,17 @@ test("npm pack installs a clean CLI with public exports and bundled templates", 
     process.platform === "win32" ? "agent-trestle.cmd" : "agent-trestle",
   );
   assert.equal(run(bin, ["--version"], { cwd: installRoot }).trim(), sourcePackage.version);
+  const installedHelp = run(bin, ["--help"], { cwd: installRoot });
+  const repository = sourcePackage.repository.url.replace(/^git\+/, "").replace(/\.git$/, "");
+  assert.ok(installedHelp.includes(repository), "installed help links the repository");
+  assert.ok(installedHelp.includes(sourcePackage.bugs.url), "installed help links the tracker");
+  assert.deepEqual(JSON.parse(run(bin, ["--version", "--json"], { cwd: installRoot })), {
+    name: sourcePackage.name,
+    version: sourcePackage.version,
+    repository,
+    bugs: sourcePackage.bugs.url,
+    license: sourcePackage.license,
+  });
   await assert.rejects(
     readFile(path.join(binDirectory, process.platform === "win32" ? "trestle.cmd" : "trestle")),
     (error) => error.code === "ENOENT",
