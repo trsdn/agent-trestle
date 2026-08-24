@@ -38,10 +38,12 @@ There is no install step for dependencies, because there are none.
 | `npm test` | Full suite via the Node built-in test runner |
 | `npm run test:unit` | Unit tests only |
 | `npm run test:integration` | Integration tests only |
+| `npm run test:coverage` | Full suite plus coverage thresholds (needs Node 22) |
 | `npm run check` | Lint + tests + packaging verification |
 
 Run `npm run check` before pushing. CI runs the same commands on Node 20 and 22
-across Linux and macOS.
+across Linux and macOS, and enforces coverage thresholds in a separate
+`Coverage` job on the `.nvmrc` runtime.
 
 ## The zero-dependency rule
 
@@ -109,6 +111,27 @@ For pull requests:
 - add a `CHANGELOG.md` entry under `Unreleased`;
 - update `docs/` when you change the command surface, configuration schema, or
   security model.
+
+## Releasing
+
+Releases are cut from tags and published by
+[`.github/workflows/release.yml`](.github/workflows/release.yml); nothing is
+uploaded by hand.
+
+1. Move the `Unreleased` changelog entries under a `## [X.Y.Z] — YYYY-MM-DD`
+   heading and set the same version in `package.json`.
+2. Merge that change, then tag the merge commit `vX.Y.Z` and push the tag.
+3. The workflow verifies that the tag, `package.json` version, and changelog
+   section agree (`node scripts/release.mjs verify --tag vX.Y.Z`), runs lint
+   and the full suite, packs the tarball, installs it into a clean consumer,
+   asserts that the installed CLI reports the tagged version and links back to
+   this repository, and publishes the GitHub release with the changelog
+   section as notes and the tarball attached.
+
+A mismatch between tag, manifest, and changelog fails the release before any
+artifact is published. Versions below `1.0.0` and any tag with a pre-release
+suffix are marked as pre-releases. Existing tags can be re-published through
+the workflow's manual dispatch input.
 
 ## Documentation
 

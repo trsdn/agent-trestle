@@ -59,6 +59,17 @@ The executable is intentionally named only `agent-trestle`, never `trestle`, to
 avoid colliding with existing npm packages that already install a `trestle`
 binary.
 
+Tagged releases also attach a packed tarball, so a release can be installed
+without a clone:
+
+```bash
+npm install -g https://github.com/trsdn/agent-trestle/releases/download/vX.Y.Z/agent-trestle-X.Y.Z.tgz
+```
+
+Every release tarball is built, smoke-tested in a clean install, and published
+by [the release workflow](.github/workflows/release.yml); `agent-trestle
+--version` reports the version that was tagged.
+
 ## Quickstart
 
 ```bash
@@ -164,6 +175,7 @@ Read [SECURITY.md](SECURITY.md) for the reporting process and
 ```bash
 npm run lint      # dependency-free syntax, JSON, and whitespace checks
 npm test          # full Node built-in test runner suite
+npm run test:coverage  # full suite plus coverage thresholds (Node 22)
 npm run check     # lint + test + packaging verification
 ```
 
