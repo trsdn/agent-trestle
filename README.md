@@ -17,7 +17,7 @@ no npm dependency tree — only Node.js built-ins plus the `git` and Copilot CLI
 executables you already have installed.
 
 > [!NOTE]
-> **Project status: pre-release (`0.1.0`).** The command surface is
+> **Project status: pre-release (`0.2.0`).** The command surface is
 > functional but not yet API-stable. `run` and CLI-driven review merge are
 > deliberately unimplemented and exit with `NOT_SUPPORTED`.
 
