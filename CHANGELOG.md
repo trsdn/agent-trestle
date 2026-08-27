@@ -10,6 +10,14 @@ are not yet stable and may change without a major version bump.
 
 ## [Unreleased]
 
+### Added
+
+- `AGENTS.md`, an orientation file for coding agents. It records the verified
+  lint, test and packaging commands, notes that `npm ci` cannot work in a
+  zero-dependency repository with no lockfile, sketches the runtime boundaries,
+  and links to `CONTRIBUTING.md` and `docs/architecture.md` for the conventions
+  and invariants rather than restating them.
+
 ### Fixed
 
 - A failed state-root initialisation no longer leaves directory creation running
