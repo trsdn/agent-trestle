@@ -4,6 +4,9 @@ node_modules/
 # Build / packaging output
 *.tgz
 
+# Coverage reports
+coverage/
+
 # Agent Trestle runtime state (project-local, never committed)
 .trestle/runs/
 .trestle/audit/
