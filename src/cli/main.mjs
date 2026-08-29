@@ -4,9 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAgentDefinition } from "../config/agent-definition.mjs";
 import { loadConfig, validateId } from "../config/config.mjs";
+import { assertAutoMergeAllowed } from "../config/permissions.mjs";
+import { loadOwnershipPolicy, OwnershipPolicyError } from "../ownership/load-policy.mjs";
 import { resolveSkillPaths, selectSkills } from "../config/skills.mjs";
 import { spawnProcess } from "../copilot/process-adapter.mjs";
 import { createJsonFileDataProvider } from "../dashboard/provider.mjs";
+import { createProjectDataProvider } from "../dashboard/project-provider.mjs";
 import { createDashboardServer } from "../dashboard/server.mjs";
 import { dispatch } from "../dispatch/dispatch.mjs";
 import {
@@ -18,7 +21,10 @@ import {
 import { createReviewGitAdapter } from "../review/git-adapter.mjs";
 import { runReviewGate } from "../review/gate.mjs";
 import { createGitDiffRunner, createProcessAdapter } from "../review/process-adapter.mjs";
+import { loadManifest, ManifestError } from "../manifest/manifest.mjs";
+import { runManifest } from "../run/run.mjs";
 import { PathSecurityError, pinDirectory, releasePin, verifyDescendant } from "../security/path-security.mjs";
+import { createAuditRecorder, generateRunId, routeTaskId } from "../audit/recorder.mjs";
 import { runTrestleMcpStdio } from "../state/mcp-server.mjs";
 import { createTrestleStateStore, TrestleStateError } from "../state/store.mjs";
 import { createWorktreeFleet } from "../worktrees/fleet.mjs";
@@ -74,19 +80,23 @@ const COMMAND_OPTION_SPECS = Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
     project: VALUE, workstream: VALUE, role: VALUE,
     prompt: VALUE, prompt_file: VALUE, skill: VALUE_REPEATABLE, binary: VALUE,
+    no_audit: BOOL,
   }),
   run: Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
+    manifest: VALUE, concurrency: VALUE, binary: VALUE, no_audit: BOOL,
+    isolate: BOOL, worktree_root: VALUE,
   }),
   review: Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
     base: VALUE, head: VALUE, producer: VALUE, reviewer: VALUE,
-    attempts: VALUE, timeout_ms: VALUE, merge: BOOL,
+    attempts: VALUE, timeout_ms: VALUE, merge: BOOL, no_audit: BOOL,
+    ownership: VALUE, actor: VALUE,
   }),
   fleet: Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
     worktree_root: VALUE, id: VALUE, start_point: VALUE, path: VALUE,
-    force: BOOL, outcome: VALUE,
+    force: BOOL, outcome: VALUE, no_audit: BOOL,
   }),
   dashboard: Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE, data: VALUE, port: VALUE,
@@ -354,10 +364,10 @@ Commands:
   doctor        Validate the project and check the Copilot executable
   resolve       Resolve one explicit project/workstream/role route
   dispatch      Dispatch one prompt through the configured route
-  run           Reserved; returns NOT_SUPPORTED in this pre-release
-  review        Run a read-only exact-diff review (merge is not supported)
+  run           Execute a task manifest: a dependency-ordered agent task graph
+  review        Run an exact-diff review gate; --merge is opt-in and gated
   fleet         Manage isolated Git worktrees: create, remove, prune
-  dashboard     Serve a read-only local dashboard from a JSON data file
+  dashboard     Serve a read-only local dashboard from project runtime records
   state-server  Run the workstream-scoped JSON-RPC/MCP state server
   state-lock    Inspect one per-key state lock, its recovery metadata, and hint
   state-unlock  Explicitly clear one stale per-key state lock. Provide
@@ -476,41 +486,176 @@ async function dispatchCommand(options, cwd) {
     ? await readFile(path.resolve(cwd, required(options, "prompt_file")), "utf8")
     : required(options, "prompt");
   const config = await loadConfig(root);
+  const projectId = required(options, "project");
+  const workstreamId = required(options, "workstream");
+  const roleId = required(options, "role");
+  const audit = createAuditRecorder({
+    projectRoot: root,
+    runId: generateRunId("dispatch"),
+    taskId: routeTaskId({ projectId, workstreamId, roleId }),
+    writerId: "dispatch",
+    enabled: options.no_audit !== true,
+  });
   const result = await dispatch({
     config,
     projectRoot: root,
-    projectId: required(options, "project"),
-    workstreamId: required(options, "workstream"),
-    roleId: required(options, "role"),
+    projectId,
+    workstreamId,
+    roleId,
     prompt,
     requestedSkills: options.skill === undefined ? [] : Array.isArray(options.skill) ? options.skill : [options.skill],
     binary: typeof options.binary === "string" ? options.binary : undefined,
+    audit,
   });
-  return { ok: result.execution.ok, command: "dispatch", ...result };
+  return { ok: result.execution.ok, command: "dispatch", ...result, audit: auditSummary(audit) };
+}
+
+function auditSummary(recorder) {
+  return recorder.enabled
+    ? { enabled: true, runId: recorder.runId, taskId: recorder.taskId, writerId: recorder.writerId }
+    : { enabled: false };
+}
+
+async function runCommand(options, cwd) {
+  const root = rootFrom(options, cwd);
+  const manifestPath = path.resolve(cwd, required(options, "manifest"));
+  const concurrency = strictlyPositiveInteger(options.concurrency, "--concurrency", 1);
+  const controller = new AbortController();
+  // SIGINT/SIGTERM abort the scheduler, which propagates into every running
+  // dispatch and tears its process tree down through the existing supervision
+  // path rather than leaving orphaned descendants behind.
+  const interrupt = () => controller.abort(new Error("run interrupted"));
+  process.once("SIGINT", interrupt);
+  process.once("SIGTERM", interrupt);
+  try {
+    const manifest = await loadManifest(root, manifestPath);
+    const config = await loadConfig(root);
+    const result = await runManifest({
+      config,
+      projectRoot: root,
+      manifest,
+      concurrency,
+      signal: controller.signal,
+      auditEnabled: options.no_audit !== true,
+      isolate: options.isolate === true,
+      ...(typeof options.worktree_root === "string"
+        ? { worktreeRoot: path.resolve(cwd, options.worktree_root) }
+        : {}),
+      ...(typeof options.binary === "string" ? { binary: options.binary } : {}),
+    });
+    return { command: "run", ...result };
+  } catch (error) {
+    // A manifest that cannot produce a runnable graph is a usage error, and it
+    // is always detected before any process is spawned.
+    if (error instanceof ManifestError) {
+      throw new CliError(error.message, EXIT_CODES.USAGE, error.code);
+    }
+    throw error;
+  } finally {
+    process.off("SIGINT", interrupt);
+    process.off("SIGTERM", interrupt);
+  }
 }
 
 async function reviewCommand(options, cwd) {
-  if (options.merge === true) {
-    throw new CliError(
-      "CLI merge is not yet supported; use the library review gate with an explicit auto-merge policy",
-      EXIT_CODES.NOT_SUPPORTED,
-      "NOT_SUPPORTED",
-    );
-  }
   const repoRoot = rootFrom(options, cwd);
+  const merge = options.merge === true;
+  // Merge refuses by default and is unlocked only by the full set of explicit
+  // opt-ins: the flag, a config that grants permissions.autoMerge, an ownership
+  // policy, and the actor that policy is evaluated against. Any missing piece
+  // fails before the gate runs, not after content has moved.
+  let mergeContext = {};
+  if (merge) {
+    const config = await loadConfig(repoRoot);
+    try {
+      assertAutoMergeAllowed(config.permissions);
+    } catch (error) {
+      throw new CliError(error.message, EXIT_CODES.BLOCKED, "AUTO_MERGE_UNAUTHORIZED");
+    }
+    if (options.ownership === undefined || options.actor === undefined) {
+      throw new CliError(
+        "--merge requires --ownership FILE and --actor ID so every changed path can be attributed",
+        EXIT_CODES.USAGE,
+        "USAGE",
+      );
+    }
+    try {
+      const ownershipPath = required(options, "ownership");
+      const resolvedOwnership = path.resolve(repoRoot, ownershipPath);
+      const relativeOwnership = path.relative(repoRoot, resolvedOwnership);
+      // Only in-repo governance documents are reachable by the branch under
+      // review; an out-of-repo policy is already outside its write scope.
+      const inRepoOwnership = relativeOwnership !== ""
+        && !relativeOwnership.startsWith("..")
+        && !path.isAbsolute(relativeOwnership);
+      mergeContext = {
+        merge: true,
+        permissions: config.permissions,
+        ownershipPolicy: await loadOwnershipPolicy(repoRoot, ownershipPath),
+        actor: required(options, "actor"),
+        governancePaths: [
+          ".trestle/config.json",
+          ...(inRepoOwnership ? [relativeOwnership.split(path.sep).join("/")] : []),
+        ],
+      };
+    } catch (error) {
+      if (error instanceof OwnershipPolicyError) {
+        throw new CliError(error.message, EXIT_CODES.USAGE, error.code);
+      }
+      throw error;
+    }
+  }
+
+  const baseRef = required(options, "base");
+  const headRef = required(options, "head");
+  const producer = required(options, "producer");
+  const reviewer = required(options, "reviewer");
+  const audit = createAuditRecorder({
+    projectRoot: repoRoot,
+    runId: generateRunId("review"),
+    taskId: "review",
+    writerId: "review",
+    enabled: options.no_audit !== true,
+  });
+  await audit.record("review.started", { baseRef, headRef, producer, reviewer, merge });
   const result = await runReviewGate({
     repoRoot,
-    baseRef: required(options, "base"),
-    headRef: required(options, "head"),
-    producer: required(options, "producer"),
-    reviewer: required(options, "reviewer"),
+    baseRef,
+    headRef,
+    producer,
+    reviewer,
     attempts: strictlyPositiveInteger(options.attempts, "--attempts", 1),
     timeoutMs: strictlyPositiveInteger(options.timeout_ms, "--timeout-ms", 120_000),
     git: createReviewGitAdapter({ runner: createGitDiffRunner() }),
     process: createProcessAdapter(),
     merge: false,
+    ...mergeContext,
   });
-  return { ok: result.status === "passed", command: "review", ...result };
+  // The decision an operator may later have to defend: what was gated on, and
+  // what the gate concluded.
+  await audit.record("review.settled", {
+    baseRef,
+    headRef,
+    producer,
+    reviewer,
+    merge,
+    ...(merge ? { actor: mergeContext.actor } : {}),
+    status: result.status,
+    reason: result.reason ?? null,
+    mergeAllowed: result.mergeAllowed === true,
+    reviewedDiffHash: result.reviewedDiffHash ?? null,
+    reviewedBaseOid: result.reviewedBaseOid ?? null,
+    currentBaseOid: result.currentBaseOid ?? null,
+    reviewedHeadOid: result.reviewedHeadOid ?? null,
+    reviewedMergedTreeOid: result.reviewedMergedTreeOid ?? null,
+    reviewedChangedPaths: result.reviewedChangedPaths ?? null,
+  });
+  return {
+    ok: result.status === "passed" || result.status === "merged",
+    command: "review",
+    ...result,
+    audit: auditSummary(audit),
+  };
 }
 
 async function fleetCommand(positionals, options, cwd) {
@@ -525,29 +670,54 @@ async function fleetCommand(positionals, options, cwd) {
     worktreeRoot,
     git: createGitProcessAdapter(),
   });
+  // Fleet operations mutate the filesystem, so each one is recorded.
+  const audit = createAuditRecorder({
+    projectRoot: repoRoot,
+    runId: generateRunId("fleet"),
+    taskId: "fleet",
+    writerId: "fleet",
+    enabled: options.no_audit !== true,
+  });
   if (operation === "create") {
     await mkdir(worktreeRoot, { recursive: true });
-    return { ok: true, command: "fleet", operation, worktree: await fleet.create({
+    const worktree = await fleet.create({
       id: required(options, "id"),
       startPoint: typeof options.start_point === "string" ? options.start_point : "HEAD",
-    }) };
+    });
+    await audit.record("fleet.created", { worktreeRoot, worktree });
+    return { ok: true, command: "fleet", operation, worktree, audit: auditSummary(audit) };
   }
   if (operation === "remove") {
-    const worktree = { id: required(options, "id"), path: path.resolve(cwd, required(options, "path")) };
-    return { ok: true, command: "fleet", operation, worktree: await fleet.remove(worktree, {
+    const requested = { id: required(options, "id"), path: path.resolve(cwd, required(options, "path")) };
+    const worktree = await fleet.remove(requested, {
       force: options.force === true,
       outcome: typeof options.outcome === "string" ? options.outcome : undefined,
-    }) };
+    });
+    await audit.record("fleet.removed", { worktreeRoot, worktree, force: options.force === true });
+    return { ok: true, command: "fleet", operation, worktree, audit: auditSummary(audit) };
   }
   await fleet.prune();
-  return { ok: true, command: "fleet", operation };
+  await audit.record("fleet.pruned", { worktreeRoot });
+  return { ok: true, command: "fleet", operation, audit: auditSummary(audit) };
 }
 
 async function dashboardCommand(options, cwd, io) {
-  const dataFile = path.resolve(cwd, required(options, "data"));
-  await access(dataFile);
+  // `--data` inspects an exported record; without it the dashboard reads the
+  // project's own runtime records, so an initialized project needs no argument.
+  let dataProvider;
+  let source;
+  if (options.data === undefined) {
+    const root = rootFrom(options, cwd);
+    dataProvider = createProjectDataProvider(root);
+    source = path.join(root, ".trestle", "audit");
+  } else {
+    const dataFile = path.resolve(cwd, required(options, "data"));
+    await access(dataFile);
+    dataProvider = createJsonFileDataProvider(dataFile);
+    source = dataFile;
+  }
   const server = createDashboardServer({
-    dataProvider: createJsonFileDataProvider(dataFile),
+    dataProvider,
     host: "127.0.0.1",
     port: positiveInteger(options.port, "--port", 0),
   });
@@ -556,6 +726,7 @@ async function dashboardCommand(options, cwd, io) {
     ok: true,
     command: "dashboard",
     url: `http://127.0.0.1:${address.port}/`,
+    source,
     pid: process.pid,
   };
   writeResult(io, result, options.json === true);
@@ -702,13 +873,8 @@ export async function runCli(argv, io = {}) {
       }),
     };
   } else if (command === "dispatch") result = await dispatchCommand(options, streams.cwd);
-  else if (command === "run") {
-    throw new CliError(
-      "run is not yet supported because no stable task-manifest contract exists",
-      EXIT_CODES.NOT_SUPPORTED,
-      "NOT_SUPPORTED",
-    );
-  } else if (command === "review") result = await reviewCommand(options, streams.cwd);
+  else if (command === "run") result = await runCommand(options, streams.cwd);
+  else if (command === "review") result = await reviewCommand(options, streams.cwd);
   else if (command === "fleet") result = await fleetCommand(positionals, options, streams.cwd);
   else if (command === "dashboard") result = await dashboardCommand(options, streams.cwd, streams);
   else if (command === "state-server") result = await stateServerCommand(options, streams.cwd);
@@ -720,7 +886,10 @@ export async function runCli(argv, io = {}) {
   if (result?.ok === false) {
     return command === "review" ? EXIT_CODES.BLOCKED
       : command === "doctor" ? EXIT_CODES.ENVIRONMENT
-        : EXIT_CODES.FAILED;
+        // A blocked graph is not a failed one: no task failed, the graph simply
+        // cannot be satisfied, so it reports distinctly from a task failure.
+        : command === "run" && result.status === "blocked" ? EXIT_CODES.BLOCKED
+          : EXIT_CODES.FAILED;
   }
   return EXIT_CODES.SUCCESS;
 }

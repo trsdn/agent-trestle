@@ -115,6 +115,7 @@ export function spawnProcess(binary, args, options = {}) {
     forcedKillSettlementMs = 1_000,
     maxStdoutBytes = DEFAULT_MAX_OUTPUT_BYTES,
     maxStderrBytes = DEFAULT_MAX_OUTPUT_BYTES,
+    signal: abortSignal,
     ...spawnOptions
   } = options;
   if (!Number.isFinite(killGraceMs) || killGraceMs < 0) {
@@ -135,6 +136,7 @@ export function spawnProcess(binary, args, options = {}) {
     const stdoutChunks = [];
     const stderrChunks = [];
     let timedOut = false;
+    let aborted = false;
     let outputExceeded = null;
     let spawnError = null;
     let settled = false;
@@ -154,12 +156,14 @@ export function spawnProcess(binary, args, options = {}) {
       if (settled) return;
       settled = true;
       clearTimers();
+      abortSignal?.removeEventListener("abort", onAbort);
       supervision?.unregister();
       resolve({
         exitCode,
         signal,
         error: spawnError,
         timedOut,
+        aborted,
         outputExceeded,
         stdout: Buffer.concat(stdoutChunks).toString("utf8"),
         stderr: Buffer.concat(stderrChunks).toString("utf8"),
@@ -213,6 +217,19 @@ export function spawnProcess(binary, args, options = {}) {
       terminationTimer.unref?.();
     };
 
+    // An external AbortSignal tears the process tree down through the same
+    // bounded SIGTERM -> SIGKILL escalation as a timeout, so an interrupted
+    // run cannot leave orphaned descendants behind.
+    function onAbort() {
+      aborted = true;
+      terminate();
+    }
+
+    if (abortSignal) {
+      if (abortSignal.aborted) onAbort();
+      else abortSignal.addEventListener("abort", onAbort, { once: true });
+    }
+
     // Bounded, memory-safe collectors: once a stream's running total would
     // exceed its cap the triggering chunk is dropped (never buffered) and the
     // whole process tree is terminated instead of letting output grow further.
@@ -258,17 +275,19 @@ export function spawnProcess(binary, args, options = {}) {
 }
 
 function buildResult(processResult, metadata, diagnostics) {
-  const status = processResult.timedOut
-    ? "timeout"
-    : processResult.outputExceeded
-      ? "output-limit"
-      : processResult.error
-        ? "error"
-        : processResult.signal
-          ? "signaled"
-          : processResult.exitCode === 0
-            ? "succeeded"
-            : "failed";
+  const status = processResult.aborted
+    ? "aborted"
+    : processResult.timedOut
+      ? "timeout"
+      : processResult.outputExceeded
+        ? "output-limit"
+        : processResult.error
+          ? "error"
+          : processResult.signal
+            ? "signaled"
+            : processResult.exitCode === 0
+              ? "succeeded"
+              : "failed";
   return {
     status,
     ok: status === "succeeded",
@@ -295,6 +314,7 @@ export async function runCopilot({
   spawnImpl,
   modelLogPath,
   readFileImpl = readFile,
+  signal,
 } = {}) {
   if (typeof prompt !== "string" || prompt.trim() === "") throw new TypeError("prompt must be non-empty text");
   if (typeof agent !== "string" || agent.trim() === "") throw new TypeError("agent must be an explicit agent ID");
@@ -315,6 +335,7 @@ export async function runCopilot({
     maxStdoutBytes: spec.maxStdoutBytes,
     maxStderrBytes: spec.maxStderrBytes,
     spawnImpl,
+    signal: spec.signal,
   }));
   const startedAt = new Date().toISOString();
   let processResult;
@@ -329,6 +350,7 @@ export async function runCopilot({
       forcedKillSettlementMs,
       maxStdoutBytes,
       maxStderrBytes,
+      ...(signal === undefined ? {} : { signal }),
     });
   } catch (error) {
     processResult = {
@@ -336,6 +358,7 @@ export async function runCopilot({
       signal: null,
       error,
       timedOut: false,
+      aborted: false,
       outputExceeded: null,
       stdout: "",
       stderr: "",
