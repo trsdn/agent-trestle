@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "id": "nightly-hardening",
+  "tasks": [
+    {
+      "id": "design",
+      "route": {
+        "project": "example-project",
+        "workstream": "main",
+        "role": "builder"
+      },
+      "prompt": "Draft the approach for the retry-budget change. Write it to docs/retry-budget.md. Do not modify source files."
+    },
+    {
+      "id": "implement",
+      "route": {
+        "project": "example-project",
+        "workstream": "main",
+        "role": "builder"
+      },
+      "promptFile": "prompts/implement-retry-budget.md",
+      "skills": ["testing"],
+      "dependsOn": ["design"],
+      "stop": {
+        "maxRounds": 3,
+        "maxNoOpRounds": 1,
+        "maxDurationMs": 900000
+      }
+    },
+    {
+      "id": "document",
+      "route": {
+        "project": "example-project",
+        "workstream": "main",
+        "role": "builder"
+      },
+      "prompt": "Update README.md to describe the retry budget. Change no source files.",
+      "dependsOn": ["design"]
+    }
+  ]
+}

@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-trestle.local/schemas/manifest.schema.json",
+  "title": "Agent Trestle task manifest",
+  "description": "A versioned task graph. Each task names one explicit project/workstream/role route, supplies exactly one prompt source, and may declare dependencies and stop conditions. Policy lives here rather than in .trestle/config.json so that project configuration stays small and closed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "tasks"],
+  "properties": {
+    "version": { "const": 1 },
+    "id": {
+      "$ref": "#/$defs/id",
+      "description": "Optional run identifier. Scopes audit segments and state for this run. Generated when omitted."
+    },
+    "tasks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/task" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$"
+    },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "route"],
+      "oneOf": [
+        { "required": ["prompt"], "not": { "required": ["promptFile"] } },
+        { "required": ["promptFile"], "not": { "required": ["prompt"] } }
+      ],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "route": { "$ref": "#/$defs/route" },
+        "prompt": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Literal prompt text. Mutually exclusive with promptFile."
+        },
+        "promptFile": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to a prompt file, resolved relative to the manifest and contained within the project root. Mutually exclusive with prompt."
+        },
+        "skills": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true,
+          "description": "Skills requested for this task, merged with those declared by the agent and configured on the role."
+        },
+        "dependsOn": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/id" },
+          "uniqueItems": true,
+          "description": "Task IDs that must complete before this task becomes ready. Must reference tasks in this manifest and must not form a cycle."
+        },
+        "stop": { "$ref": "#/$defs/stop" }
+      }
+    },
+    "route": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["project", "workstream", "role"],
+      "properties": {
+        "project": { "$ref": "#/$defs/id" },
+        "workstream": { "$ref": "#/$defs/id" },
+        "role": { "$ref": "#/$defs/id" }
+      }
+    },
+    "stop": {
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "description": "Explicit stop conditions for this task. Bounded execution is a project invariant, so a stop object must declare at least one bound.",
+      "properties": {
+        "maxRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Maximum execution rounds before the task stops with reason max-rounds."
+        },
+        "maxDurationMs": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Wall-clock bound before the task stops with reason max-duration."
+        },
+        "maxNoOpRounds": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Consecutive rounds with an unchanged work signature before the task stops with reason no-op."
+        }
+      }
+    }
+  }
+}
