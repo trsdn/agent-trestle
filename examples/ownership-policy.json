@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "owners": {
+    "backend-implementer": [
+      "src/api/**",
+      "src/db/**"
+    ],
+    "frontend-implementer": [
+      "src/ui/**"
+    ],
+    "docs-writer": [
+      "docs/**",
+      "*.md"
+    ]
+  },
+  "defaultOwner": null,
+  "allowUnowned": false,
+  "pathStyle": "posix"
+}
