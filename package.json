@@ -26,6 +26,9 @@
   "engines": {
     "node": ">=20"
   },
+  "os": [
+    "!win32"
+  ],
   "bin": {
     "agent-trestle": "./src/cli/agent-trestle.mjs"
   },
@@ -36,12 +39,16 @@
     "./copilot": "./src/copilot/index.mjs",
     "./dashboard": "./src/dashboard/index.mjs",
     "./dispatch": "./src/dispatch/index.mjs",
+    "./manifest": "./src/manifest/index.mjs",
     "./ownership": "./src/ownership/index.mjs",
     "./review": "./src/review/index.mjs",
+    "./run": "./src/run/index.mjs",
     "./scheduler": "./src/scheduler/index.mjs",
     "./state": "./src/state/index.mjs",
     "./worktrees": "./src/worktrees/index.mjs",
-    "./schemas/config.json": "./schemas/config.schema.json"
+    "./schemas/config.json": "./schemas/config.schema.json",
+    "./schemas/manifest.json": "./schemas/manifest.schema.json",
+    "./schemas/ownership.json": "./schemas/ownership.schema.json"
   },
   "publishConfig": {
     "access": "public"
@@ -51,6 +58,7 @@
     "schemas/",
     "templates/",
     "examples/",
+    "prompts/",
     "docs/",
     "README.md",
     "CHANGELOG.md",
