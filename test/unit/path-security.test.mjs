@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, rename, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch";
 import {
   PathSecurityError,
   assertSecurelyHeldDirectory,
@@ -10,7 +11,7 @@ import {
   verifyPinnedDirectory,
 } from "../../src/security/path-security.mjs";
 
-const workRoot = path.resolve("test/.work/path-security");
+const workRoot = await makeScratchRoot("path-security");
 
 test.after(async () => rm(workRoot, { recursive: true, force: true }));
 

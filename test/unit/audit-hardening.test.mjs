@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { access, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { resolve } from "node:path";
+import { makeScratchRoot } from "../helpers/scratch";
 import { after, beforeEach, test } from "node:test";
 import { createAuditSegmentWriter, reconcileAuditTask } from "../../src/audit/audit.mjs";
 
-const workRoot = resolve("test/.artifacts/audit-hardening");
+const workRoot = await makeScratchRoot("audit-hardening");
 const HOST = hostname();
 
 beforeEach(async () => {

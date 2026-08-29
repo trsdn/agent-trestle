@@ -8,8 +8,9 @@ import {
   TrestleStateError,
   createTrestleStateStore,
 } from '../../src/state/store.mjs';
+import { makeScratchRoot } from '../helpers/scratch';
 
-const artifactRoot = resolve('test/.artifacts/state-store');
+const artifactRoot = await makeScratchRoot('state-store');
 const HOST = hostname();
 const CONCURRENCY = 25;
 const roots = {

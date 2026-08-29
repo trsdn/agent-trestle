@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch";
 import { loadConfig } from "../../src/config/config.mjs";
 import {
   loadAgentDefinition,
@@ -15,7 +16,7 @@ import {
 import { resolveSkillPaths } from "../../src/config/skills.mjs";
 import { PathSecurityError } from "../../src/security/path-security.mjs";
 
-const workRoot = path.resolve("test/.work/loader-containment");
+const workRoot = await makeScratchRoot("loader-containment");
 const projectRoot = path.join(workRoot, "project");
 const outsideRoot = path.join(workRoot, "outside");
 

@@ -3,9 +3,10 @@ import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch";
 
 const repoRoot = path.resolve(".");
-const fixtureRoot = path.resolve("test/.work/parent-signal-supervision");
+const fixtureRoot = await makeScratchRoot("parent-signal-supervision");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));

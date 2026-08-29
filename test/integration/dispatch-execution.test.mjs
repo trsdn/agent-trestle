@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch";
 import { validateConfig } from "../../src/config/config.mjs";
 import { dispatch } from "../../src/dispatch/dispatch.mjs";
 
@@ -27,7 +28,7 @@ const config = validateConfig({
 });
 
 test("dispatch binds route, agent, skills, permissions, and process adapter", async () => {
-  const projectRoot = path.resolve("test/.work/dispatch-execution");
+  const projectRoot = await makeScratchRoot("dispatch-execution");
   await rm(projectRoot, { recursive: true, force: true });
   await mkdir(path.join(projectRoot, "payments"), { recursive: true });
   let executionSpec;
