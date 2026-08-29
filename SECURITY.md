@@ -5,9 +5,9 @@ The default policy is least privilege:
 
 - unrestricted tools, filesystem paths, and URLs are disabled;
 - non-interactive execution requires an explicit policy;
-- the CLI exposes no merge path at all: `review --merge` returns
-  `NOT_SUPPORTED`, and programmatic merge additionally requires an exact-diff
-  passing review plus explicit `permissions.autoMerge`;
+- the CLI refuses to merge by default: `review --merge` additionally requires
+  `permissions.autoMerge`, an explicit ownership policy and actor, a passing
+  exact-diff review, and a base ref that has not moved since approval;
 - the dashboard binds only to `127.0.0.1`;
 - state and audit paths are constrained to configured project roots.
 
@@ -71,3 +71,25 @@ Out of scope: vulnerabilities in Node.js, Git, or the GitHub Copilot CLI
 themselves — report those to their maintainers — and behaviour that follows
 directly from an operator deliberately enabling a documented opt-in such as
 `permissions.allowAllTools` or `permissions.autoMerge`.
+
+## Known limitations
+
+These are understood weaknesses rather than reportable findings. They are listed
+so operators can compensate, and each is a candidate for hardening.
+
+- **A custom reviewer definition is read from the working tree.** `--reviewer`
+  names an agent whose definition is loaded from the checkout as it exists when
+  `review` runs, not from the reviewed base commit. An actor able to write that
+  definition can therefore influence the reviewer that judges its own work,
+  including through changes that were never committed or reviewed. Prefer a
+  built-in reviewer, or keep agent definitions in a location the producing agent
+  cannot write.
+- **An in-repository ownership policy is only protected against committed
+  changes.** A merge whose reviewed diff touches the ownership policy or
+  `.trestle/config.json` is refused, but an uncommitted local edit made before
+  `review` runs is not detected. Keep the policy outside the repository — see
+  [docs/merge-semantics.md](docs/merge-semantics.md#where-to-keep-the-policy).
+- **Auto-merge trusts the operator's `.trestle/config.json`.** `permissions.autoMerge`
+  is read from the project configuration, so anything that can write that file can
+  enable merging. It is off by default and must also pass ownership and exact-diff
+  checks, but the configuration file should be treated as a trusted input.
