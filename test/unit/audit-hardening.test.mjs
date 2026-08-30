@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { access, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { resolve } from "node:path";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { after, beforeEach, test } from "node:test";
 import { createAuditSegmentWriter, reconcileAuditTask } from "../../src/audit/audit.mjs";
 

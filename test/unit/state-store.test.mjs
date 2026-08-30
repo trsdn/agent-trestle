@@ -8,7 +8,7 @@ import {
   TrestleStateError,
   createTrestleStateStore,
 } from "../../src/state/store.mjs";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 
 const artifactRoot = await makeScratchRoot("state-store");
 const HOST = hostname();

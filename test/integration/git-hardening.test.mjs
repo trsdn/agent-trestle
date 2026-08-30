@@ -4,7 +4,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { checkOwnership, createOwnershipPolicy } from "../../src/ownership/index.mjs";
 import { createReviewGitAdapter, reviewFence, runReviewGate } from "../../src/review/index.mjs";
 import { createGitProcessAdapter, createWorktreeFleet } from "../../src/worktrees/index.mjs";

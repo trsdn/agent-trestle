@@ -3,7 +3,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { PassThrough } from "node:stream";
 import { after, test } from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { createTrestleMcpServer, TRESTLE_STATE_TOOLS } from "../../src/state/mcp-server.mjs";
 import { createTrestleStateStore } from "../../src/state/store.mjs";
 

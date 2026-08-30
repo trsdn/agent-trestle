@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import {
   BUILTIN_REVIEWER_AGENTS,
   SAFE_ARG_BYTES,

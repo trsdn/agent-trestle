@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { validateConfig } from "../../src/config/config.mjs";
 import { dispatch } from "../../src/dispatch/dispatch.mjs";
 

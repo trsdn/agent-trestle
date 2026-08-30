@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { auditRootFor, reconcileAuditTask } from "../../src/audit/index.mjs";
 import { EXIT_CODES, main, runCli } from "../../src/cli/main.mjs";
 

@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { loadConfig } from "../../src/config/config.mjs";
 import {
   loadAgentDefinition,

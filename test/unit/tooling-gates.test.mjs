@@ -10,7 +10,7 @@ import { test } from "node:test";
 import { promisify } from "node:util";
 
 import { parseFloor, summarize } from "../../scripts/coverage.mjs";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = path.resolve(import.meta.dirname, "..", "..");

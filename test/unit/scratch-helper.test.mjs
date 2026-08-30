@@ -4,7 +4,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 import { promisify } from "node:util";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 
 const execFileAsync = promisify(execFile);
 const workRoot = await makeScratchRoot("scratch-helper");
@@ -32,7 +32,7 @@ test("scratch roots are unique per call", async () => {
 test("concurrent workers creating and reclaiming scratch roots never fail each other", async () => {
   const script = path.join(workRoot, "worker.mjs");
   await writeFile(script, [
-    `import { makeScratchRoot } from ${JSON.stringify(path.join(repoRoot, "test/helpers/scratch"))};`,
+    `import { makeScratchRoot } from ${JSON.stringify(path.join(repoRoot, "test/helpers/scratch.mjs"))};`,
     "for (let i = 0; i < 4; i += 1) await makeScratchRoot(`race-${i}`);",
     "process.exit(0);",
   ].join("\n"));
@@ -65,7 +65,7 @@ test("a stale root owned by a dead process is reclaimed", async () => {
 
   const script = path.join(workRoot, "reclaim.mjs");
   await writeFile(script, [
-    `import { makeScratchRoot } from ${JSON.stringify(path.join(repoRoot, "test/helpers/scratch"))};`,
+    `import { makeScratchRoot } from ${JSON.stringify(path.join(repoRoot, "test/helpers/scratch.mjs"))};`,
     "await makeScratchRoot('reclaim');",
     `import('node:fs').then(({ existsSync }) => {`,
     `  process.stdout.write(existsSync(${JSON.stringify(stale)}) ? 'present' : 'reclaimed');`,

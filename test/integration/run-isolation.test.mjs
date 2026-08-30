@@ -4,7 +4,7 @@ import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 import { promisify } from "node:util";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { EXIT_CODES, runCli } from "../../src/cli/main.mjs";
 
 const execFileAsync = promisify(execFile);

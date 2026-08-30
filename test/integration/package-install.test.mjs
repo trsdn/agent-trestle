@@ -3,7 +3,7 @@ import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 
 const packageRoot = path.resolve(".");
 const fixtureRoot = await makeScratchRoot("package-install");

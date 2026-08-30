@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, resolve } from "node:path";
 import { after, test } from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { createAuditSegmentWriter, reconcileAuditTask } from "../../src/audit/audit.mjs";
 
 // Regression coverage for the stale-lock reclaim race: the old design read a

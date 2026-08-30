@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 
 const repoRoot = path.resolve(".");
 const fixtureRoot = await makeScratchRoot("parent-signal-supervision");

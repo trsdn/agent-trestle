@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { after, beforeEach, test } from "node:test";
 import {
   AuditIntegrityError,

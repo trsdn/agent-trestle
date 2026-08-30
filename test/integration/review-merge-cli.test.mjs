@@ -3,7 +3,7 @@ import { spawnSync } from "node:child_process";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { EXIT_CODES, main, runCli } from "../../src/cli/main.mjs";
 
 const workRoot = await makeScratchRoot("review-merge-cli");

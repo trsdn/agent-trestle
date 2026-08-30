@@ -5,7 +5,7 @@ import { PassThrough } from "node:stream";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import {
   createGitProcessAdapter,
   createWorktreeFleet,

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { validateConfig } from "../../src/config/config.mjs";
 import { validateManifest } from "../../src/manifest/manifest.mjs";
 import { runManifest } from "../../src/run/run.mjs";

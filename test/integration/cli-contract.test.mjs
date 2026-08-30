@@ -4,7 +4,7 @@ import { hostname } from "node:os";
 import { dirname } from "node:path";
 import path from "node:path";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import * as library from "../../src/index.mjs";
 import { EXIT_CODES, main, runCli } from "../../src/cli/main.mjs";
 

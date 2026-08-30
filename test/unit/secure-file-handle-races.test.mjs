@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import { makeScratchRoot } from "../helpers/scratch";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { createAuditSegmentWriter } from "../../src/audit/audit.mjs";
 import { loadAgentDefinition } from "../../src/config/agent-definition.mjs";
 import { loadConfig } from "../../src/config/config.mjs";
