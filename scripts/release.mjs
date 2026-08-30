@@ -29,7 +29,11 @@ export function versionFromTag(tag) {
 
 /** Return the changelog body documenting one version, without its heading. */
 export function extractReleaseNotes(changelog, version) {
-  const escaped = version.replace(/[.+]/g, "\\$&");
+  // Escape every regex metacharacter, not just `.` and `+`. This function is
+  // exported, so it can be reached with a string that never passed through
+  // versionFromTag's semver check, and a partial escape leaves a backslash or a
+  // quantifier in the input able to change what the heading pattern matches.
+  const escaped = version.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const heading = new RegExp(`^## \\[?${escaped}\\]?(?![0-9A-Za-z.+-])`);
   const lines = String(changelog).split("\n");
   const start = lines.findIndex((line) => heading.test(line));
