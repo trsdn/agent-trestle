@@ -51,6 +51,11 @@ are not yet stable and may change without a major version bump.
 
 ### Changed
 
+- Renamed `test/helpers/scratch` to `test/helpers/scratch.mjs` and gave every
+  importer the explicit extension. The extensionless file resolved, but relied
+  on the loader inferring a module type it had no extension to declare.
+- Pinned the release and CodeQL workflows to action commit SHAs, matching the
+  CI workflow, so no workflow in the repository still trusts a mutable tag.
 - Wired manifest execution through the scheduler so task graphs run in
   dependency order, respect `--concurrency`, support stop-condition convergence,
   and fail invalid graphs before spawning any agent.
@@ -125,6 +130,10 @@ are not yet stable and may change without a major version bump.
   sorted lexicographically by command prefix rather than by time.
 - Fixed the shipped `examples/task-manifest.json` referencing a `promptFile` that
   did not exist, which made the documented example fail when copied verbatim.
+- Stopped the README pinning a hard-coded version in its status banner, which had
+  already drifted behind `package.json`. The banner now states the pre-`1.0.0`
+  stability contract instead of a number that goes stale every release, matching
+  how the supported-versions table in `SECURITY.md` is worded.
 
 ### Security
 

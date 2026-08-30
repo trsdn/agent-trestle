@@ -17,9 +17,10 @@ no npm dependency tree — only Node.js built-ins plus the `git` and Copilot CLI
 executables you already have installed.
 
 > [!NOTE]
-> **Project status: pre-release (`0.2.0`).** The command surface is
-> functional but not yet API-stable. Merging refuses by default and requires
-> several explicit opt-ins — see [merge semantics](docs/merge-semantics.md).
+> **Project status: pre-release.** The command surface is functional but not
+> yet API-stable while the version remains below `1.0.0`. Merging refuses by
+> default and requires several explicit opt-ins — see
+> [merge semantics](docs/merge-semantics.md).
 
 ---
 
