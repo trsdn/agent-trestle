@@ -65,7 +65,7 @@ test("npm pack installs a clean CLI with public exports and bundled templates", 
     exportsOutput.trim(),
     [
       "audit", "config", "copilot", "dashboard", "dispatch", "manifest",
-      "ownership", "review", "run", "scheduler", "state", "worktrees",
+      "ownership", "review", "run", "sandbox", "scheduler", "state", "worktrees",
     ].join(","),
   );
 
