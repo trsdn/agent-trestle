@@ -49,6 +49,8 @@ problems that a prompt cannot solve:
   writes require `O_NOFOLLOW`, the worktree fleet requires POSIX ownership
   semantics, and process-group termination has no Windows equivalent — see
   [platform support](docs/security-model.md#platform-support).
+  From a Windows host, run under **WSL2** with the checkout on the Linux
+  filesystem (not `/mnt/c`); every guarantee holds there unchanged.
 
 ## Install
 

@@ -76,6 +76,11 @@ are not yet stable and may change without a major version bump.
 
 ### Changed
 
+- Documented WSL2 as the supported way to run from a Windows host, including
+  the requirement to keep the checkout off `/mnt/c`: DrvFs synthesizes Linux
+  ownership and mode instead of translating NTFS ACLs, so secure-hold
+  verification either refuses it for the wrong reason or, with the `metadata`
+  mount option, can be made to pass without the guarantee being true.
 - Documented why Windows is unsupported in terms of the actual constraints
   rather than the worktree fleet alone: the package refuses to install there
   (`"os": ["!win32"]`, `EBADPLATFORM`), audit and state writes need

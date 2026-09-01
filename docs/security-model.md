@@ -156,6 +156,22 @@ weakens contradicts the fail-closed rule the rest of this document depends on,
 so the platform is refused at install time instead of being partially
 supported.
 
+### Windows via WSL2
+
+WSL2 is the supported way to run from a Windows host. It is a real Linux
+kernel, so `O_NOFOLLOW`, POSIX ownership, and process groups all behave
+natively and nothing in this document is weakened.
+
+Keep the checkout on the WSL2 filesystem (under `~`, for example), not on a
+Windows drive under `/mnt/c`. DrvFs *synthesizes* Linux metadata rather than
+translating NTFS ACLs: by default it reports every path as owned by `root` with
+mode `0777`, which secure-hold verification refuses as group/other-writable —
+the right answer, but reached for the wrong reason. Mounting with the
+`metadata` option and tightening the mode would silence that refusal without
+making it true, because the synthesized owner and mode still do not reflect the
+NTFS ACLs that actually govern access. A checkout on the native filesystem
+avoids the question entirely, and is substantially faster.
+
 ## Network boundary
 
 The dashboard CLI exposes no `--host` flag and therefore always binds
