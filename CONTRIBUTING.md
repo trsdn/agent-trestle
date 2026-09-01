@@ -18,10 +18,9 @@ GitHub advisory intake.
 ## Development setup
 
 Requirements: Node.js ≥ 20 (use `.nvmrc` for the recommended version), Git, and
-the GitHub Copilot CLI on your `PATH`. Linux or macOS — Windows is refused at
-install time by `"os": ["!win32"]`, because the worktree fleet requires POSIX
-ownership semantics, process-group termination has no Windows equivalent, and
-the state lock protocol assumes POSIX unlink semantics. See
+the GitHub Copilot CLI on your `PATH`. Linux, macOS, or Windows — on Windows,
+agent execution requires `--sandbox` and a container runtime, and the worktree
+fleet fails closed. See
 [platform support](docs/security-model.md#platform-support).
 
 ```bash

@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { promisify } from "node:util";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
+import { POSIX_EXECUTABLE_SCRIPT_ONLY } from "../helpers/platform.mjs";
 
 const execFileAsync = promisify(execFile);
 const workRoot = await makeScratchRoot("scratch-helper");
@@ -29,7 +30,7 @@ test("scratch roots are unique per call", async () => {
  * test file at module load rather than at an assertion. Purging is best effort
  * and must never fail a run.
  */
-test("concurrent workers creating and reclaiming scratch roots never fail each other", async () => {
+test("concurrent workers creating and reclaiming scratch roots never fail each other", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const script = path.join(workRoot, "worker.mjs");
   await writeFile(script, [
     `import { makeScratchRoot } from ${JSON.stringify(path.join(repoRoot, "test/helpers/scratch.mjs"))};`,
@@ -51,7 +52,7 @@ test("concurrent workers creating and reclaiming scratch roots never fail each o
   );
 });
 
-test("a stale root owned by a dead process is reclaimed", async () => {
+test("a stale root owned by a dead process is reclaimed", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const scratchBase = path.resolve(repoRoot, "test/.work/.scratch");
   // PID 2^22 + 1 is above the maximum PID on Linux and macOS, so it can never
   // identify a live process.

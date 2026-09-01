@@ -26,9 +26,6 @@
   "engines": {
     "node": ">=20"
   },
-  "os": [
-    "!win32"
-  ],
   "bin": {
     "agent-trestle": "./src/cli/agent-trestle.mjs"
   },

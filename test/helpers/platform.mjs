@@ -1,11 +1,12 @@
 /**
- * Shared platform gates for tests.
+ * Shared platform gates and portability helpers for tests.
  *
  * A gate here always names behaviour that is *intentionally* different on the
  * excluded platform, never a test that merely happens to be inconvenient. Each
  * one carries the reason so a skipped test reads as a documented decision
  * rather than as coverage quietly going missing.
  */
+import path from "node:path";
 
 /**
  * For tests that assert the *success* path of the worktree fleet.
@@ -31,9 +32,42 @@ export const POSIX_OPEN_HANDLE_RENAME_ONLY = process.platform === "win32"
   : false;
 
 /**
+ * For tests that spawn a script as if it were an executable.
+ *
+ * POSIX runs a `#!`-prefixed file directly. Windows has no shebang, and Node
+ * refuses to spawn `.cmd`/`.bat` without `shell: true` (the CVE-2024-27980
+ * mitigation), which the process adapter deliberately does not use - a shell
+ * would concatenate rather than escape argv, and the prompt travels in argv.
+ * A fake CLI therefore cannot be made spawnable on Windows without weakening
+ * the thing under test. This is the same limitation that makes `--sandbox` the
+ * supported way to run an agent from a Windows host: `docker` is a real
+ * executable, so it spawns without a shell.
+ */
+export const POSIX_EXECUTABLE_SCRIPT_ONLY = process.platform === "win32"
+  ? "a script cannot be spawned as an executable on Windows without a shell, which the adapter refuses to use"
+  : false;
+
+/**
  * For tests that signal a whole process group. `process.kill(-pid)` returns
  * `ESRCH` on Windows, which has no POSIX process groups.
  */
 export const POSIX_PROCESS_GROUPS_ONLY = process.platform === "win32"
   ? "requires POSIX process groups; process.kill(-pid) returns ESRCH on Windows"
   : false;
+
+/**
+ * For tests that assert POSIX mode bits or uid-based ownership directly.
+ */
+export const POSIX_MODE_BITS_ONLY = process.platform === "win32"
+  ? "requires POSIX ownership and mode bits, which Windows does not expose"
+  : false;
+
+/**
+ * Renders a filesystem path with forward slashes so an assertion can describe
+ * the *shape* of a path without also asserting the host's separator. Use this
+ * rather than relaxing an assertion: the segments still have to match exactly.
+ */
+export function posixPath(value) {
+  return value.split(path.sep).join("/");
+}
+

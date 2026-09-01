@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveSkillPaths, selectSkills } from "../../src/config/skills.mjs";
+import { posixPath } from "../helpers/platform.mjs";
 import { availableSkillSuffixes } from "./config-skill-fixtures.mjs";
 
 const mockPin = Object.freeze({ path: "/fixture-project", realPath: "/fixture-project" });
@@ -15,7 +16,10 @@ test("selects a stable, unique skill set from test-owned fixtures", async () => 
   assert.deepEqual(selected, ["reviewer", "shared"]);
   const resolved = await resolveSkillPaths("/fixture-project", selected, {
     readVerifiedFileImpl: async (_pin, candidate) => {
-      if (![...availableSkillSuffixes].some((suffix) => candidate.endsWith(suffix))) {
+      // The fixture describes suffixes in POSIX form, so the candidate is
+      // normalised rather than the expectation being loosened.
+      const normalized = posixPath(candidate);
+      if (![...availableSkillSuffixes].some((suffix) => normalized.endsWith(suffix))) {
         const error = new Error(`Missing fixture ${candidate}`);
         error.code = "ENOENT";
         throw error;
@@ -24,8 +28,8 @@ test("selects a stable, unique skill set from test-owned fixtures", async () => 
     },
     pinDirectoryImpl: mockPinDirectoryImpl,
   });
-  assert.match(resolved[0].path, /\.github\/skills\/reviewer\/SKILL\.md$/);
-  assert.match(resolved[1].path, /\.copilot\/skills\/shared\/SKILL\.md$/);
+  assert.match(posixPath(resolved[0].path), /\.github\/skills\/reviewer\/SKILL\.md$/);
+  assert.match(posixPath(resolved[1].path), /\.copilot\/skills\/shared\/SKILL\.md$/);
 });
 
 test("requested skills must be explicitly declared or configured", () => {

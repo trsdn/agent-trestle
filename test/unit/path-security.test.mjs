@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, rename, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { POSIX_MODE_BITS_ONLY } from "../helpers/platform.mjs";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
 import {
   PathSecurityError,
@@ -86,7 +87,7 @@ function fakeStatSeam(entries) {
   };
 }
 
-test("securely held directory under the repo passes containment", async () => {
+test("securely held directory under the repo passes containment", { skip: POSIX_MODE_BITS_ONLY }, async () => {
   const dir = path.join(workRoot, "held");
   await mkdir(dir, { recursive: true, mode: 0o700 });
   assert.equal(await assertSecurelyHeldDirectory(dir), path.resolve(dir));

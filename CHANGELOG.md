@@ -12,6 +12,14 @@ are not yet stable and may change without a major version bump.
 
 ### Added
 
+- Windows is now a supported platform for agent execution, through the sandbox.
+  `package.json` no longer declares `"os": ["!win32"]`, and CI covers
+  `windows-latest` alongside Linux and macOS. `dispatch` and `run` refuse to
+  run an agent unsandboxed on Windows with exit 3 and `SANDBOX_REQUIRED`: npm
+  installs Copilot CLI there as a `.cmd` shim that Node will not spawn without
+  a shell, and Windows has no process groups to bound a forked helper with.
+  `fleet` and `run --isolate` continue to fail closed on Windows because
+  secure-hold verification needs POSIX ownership.
 - Added an opt-in container sandbox for agent execution. `--sandbox` on
   `dispatch` and `run` rewrites the Copilot invocation into a container run, so
   the agent is contained by a mount and network namespace rather than by the

@@ -324,7 +324,10 @@ writes, this constrains what the *agent* can reach: containment becomes a
 property of the kernel's mount and network namespaces rather than of a working
 directory the agent is merely pointed at.
 
-It is off by default, and declaring a sandbox does not enable one. `--sandbox`
+It is off by default on Linux and macOS, and **required on Windows**, where
+`dispatch` and `run` exit 3 with `SANDBOX_REQUIRED` without it — an unsandboxed
+agent cannot be spawned there without a shell, and Windows has no process
+groups to bound one with. Declaring a sandbox does not enable one. `--sandbox`
 enables it, and asking for it without a `sandbox` block in
 `.trestle/config.json` is a usage error (exit 2) rather than a silent fall back
 to running unsandboxed.

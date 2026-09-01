@@ -3,6 +3,7 @@ import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
+import { POSIX_EXECUTABLE_SCRIPT_ONLY } from "../helpers/platform.mjs";
 import { validateConfig } from "../../src/config/config.mjs";
 import { validateManifest } from "../../src/manifest/manifest.mjs";
 import { runManifest } from "../../src/run/run.mjs";
@@ -316,7 +317,7 @@ test("an unrunnable graph is refused before any process starts", async () => {
   assert.match(failure.error.message, /contains a cycle: a -> b -> a/);
 });
 
-test("run executes a manifest end to end and reports the graph", async () => {
+test("run executes a manifest end to end and reports the graph", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const projectRoot = await initializedProject("cli-run");
   const fakeCopilot = path.join(projectRoot, "fake-copilot");
   await writeFile(fakeCopilot, "#!/usr/bin/env node\nprocess.stdout.write('done');\n");
@@ -354,7 +355,7 @@ test("run executes a manifest end to end and reports the graph", async () => {
   assert.ok(payload.tasks.every((task) => task.status === "completed"));
 });
 
-test("a failing task yields a non-zero exit and a failure-shaped payload", async () => {
+test("a failing task yields a non-zero exit and a failure-shaped payload", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const projectRoot = await initializedProject("cli-fail");
   const fakeCopilot = path.join(projectRoot, "fake-copilot");
   await writeFile(fakeCopilot, "#!/usr/bin/env node\nprocess.stderr.write('nope');\nprocess.exit(7);\n");

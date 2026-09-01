@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { posixPath } from "../helpers/platform.mjs";
 import { configPath, validateConfig } from "../../src/config/config.mjs";
 
 const minimal = {
@@ -83,7 +84,9 @@ test("rejects duplicate deterministic routing IDs", () => {
 });
 
 test("uses only .trestle/config.json", () => {
-  assert.match(configPath("/repo"), /\/repo\/\.trestle\/config\.json$/);
+  // Asserted by segment rather than by literal string so the separator of the
+  // host is not baked into the expectation.
+  assert.equal(posixPath(configPath("/repo")).endsWith("/repo/.trestle/config.json"), true);
 });
 
 test("rejects unknown keys at all levels", () => {

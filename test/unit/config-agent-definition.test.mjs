@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import path from "node:path";
 import test from "node:test";
 import {
   loadAgentDefinition,
@@ -19,7 +20,10 @@ test("parses model and block-list skills from agent frontmatter", async () => {
     pinDirectoryImpl: mockPinDirectoryImpl,
   });
   assert.equal(agent.id, "builder");
-  assert.equal(agent.path, "/fixture-project/.github/agents/builder.agent.md");
+  assert.equal(
+    agent.path,
+    path.resolve("/fixture-project", ".github", "agents", "builder.agent.md"),
+  );
   assert.equal(agent.model, "gpt-test");
   assert.deepEqual(agent.skills, ["reviewer", "shared"]);
 });

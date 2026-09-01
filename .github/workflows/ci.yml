@@ -35,9 +35,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The worktree fleet contract requires POSIX ownership semantics and
-        # fails closed on Windows, so CI covers Linux and macOS only.
-        os: [ubuntu-latest, macos-latest]
+        # Windows is covered because agent execution there is contained by the
+        # sandbox rather than by POSIX primitives. The worktree fleet still
+        # fails closed on Windows by design, and the tests that assert its
+        # success path are skipped there with a stated reason - see
+        # test/helpers/platform.mjs.
+        os: [ubuntu-latest, macos-latest, windows-latest]
         node: ['20', '22']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

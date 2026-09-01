@@ -505,9 +505,29 @@ async function doctorCommand(options, cwd) {
  * containment that was never configured is a usage error rather than a silent
  * fall back to running unsandboxed, which would be the one failure mode this
  * flag exists to prevent.
+ *
+ * On Windows the sandbox is not optional. Node refuses to spawn the `.cmd`
+ * shim that npm installs Copilot CLI as unless a shell is used, and a shell
+ * concatenates argv rather than escaping it - with the prompt in argv, that is
+ * not a trade this project makes. Windows also has no process groups, so a
+ * helper forked by an agent could outlive termination. Both are contained by
+ * running the agent in a container, and neither is contained without one, so
+ * unsandboxed execution there is refused rather than half-supported.
  */
 function resolveSandbox(options, config) {
-  if (options.sandbox !== true) return undefined;
+  if (options.sandbox !== true) {
+    if (process.platform === "win32") {
+      throw new CliError(
+        "Running an agent on Windows requires --sandbox: an unsandboxed agent "
+          + "cannot be spawned without a shell, and Windows has no process groups "
+          + "to bound it with. Configure sandbox.image and pass --sandbox, or run "
+          + "under WSL2.",
+        EXIT_CODES.NOT_SUPPORTED,
+        "SANDBOX_REQUIRED",
+      );
+    }
+    return undefined;
+  }
   if (config.sandbox === undefined) {
     throw new CliError(
       "--sandbox requires a sandbox block in .trestle/config.json (set sandbox.image)",

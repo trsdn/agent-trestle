@@ -44,14 +44,13 @@ problems that a prompt cannot solve:
 - **Node.js ≥ 20** (developed and CI-tested on 20 and 22)
 - **Git**
 - **GitHub Copilot CLI** on your `PATH`
-- **Linux or macOS.** Windows is refused at install time: `package.json`
-  declares `"os": ["!win32"]`, so npm exits with `EBADPLATFORM`. The worktree
-  fleet requires POSIX ownership semantics, process-group termination has no
-  Windows equivalent, and the state lock protocol assumes POSIX unlink
-  semantics — see
+- **Linux, macOS, or Windows.** On Windows, agent execution requires
+  `--sandbox`: an unsandboxed agent cannot be spawned without a shell, and
+  Windows has no process groups to bound one with, so the CLI refuses rather
+  than running it half-contained. The worktree fleet (`fleet`, `run --isolate`)
+  needs POSIX ownership semantics and fails closed on Windows. See
   [platform support](docs/security-model.md#platform-support).
-  From a Windows host, run under **WSL2** with the checkout on the Linux
-  filesystem (not `/mnt/c`); every guarantee holds there unchanged.
+- **Docker** (or Podman) if you use `--sandbox`, which is required on Windows.
 
 ## Install
 
