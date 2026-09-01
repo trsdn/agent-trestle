@@ -86,6 +86,15 @@ are not yet stable and may change without a major version bump.
 
 ### Changed
 
+- Replaced every direct `O_NOFOLLOW` open with `openSymlinkSafe`, which keeps
+  the kernel refusal wherever the platform provides one and reconstructs the
+  same property from an `lstat`/open/identity sequence where it does not. POSIX
+  behaviour is unchanged, including the raw `ELOOP`/`EEXIST` codes callers
+  branch on. This removes the single largest Windows blocker: 197 failing
+  assertions across 26 files became 129 across 20, and `init`, `validate` and a
+  sandboxed `dispatch` now complete on Windows. The platform is still refused at
+  install time — the state lock protocol assumes POSIX unlink semantics and has
+  not been characterised on Windows yet.
 - Documented WSL2 as the supported way to run from a Windows host, including
   the requirement to keep the checkout off `/mnt/c`: DrvFs synthesizes Linux
   ownership and mode instead of translating NTFS ACLs, so secure-hold
@@ -144,6 +153,10 @@ are not yet stable and may change without a major version bump.
 
 ### Fixed
 
+- `state-unlock` no longer rejects a lock identity this process itself reported
+  on Windows. NTFS file IDs combine an MFT record number with a sequence number
+  in the high bits, so they routinely exceed 2^53 and failed the safe-integer
+  check, making operator lock recovery impossible.
 - Added `.gitattributes` so text files normalise to LF in the index and check
   out as LF on every platform. `scripts/lint.mjs` rejects CRLF, so a checkout on
   a machine with `core.autocrlf=true` (the Windows default) previously

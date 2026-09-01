@@ -1,9 +1,9 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { pinDirectory, releasePin, verifyDescendant, verifyPinnedDirectory } from "../security/path-security.mjs";
+import { openSymlinkSafe, pinDirectory, releasePin, verifyDescendant, verifyPinnedDirectory } from "../security/path-security.mjs";
 
 const DEFAULT_VERSION = 1;
 const LOCK_RETRY_MS = 10;
@@ -156,7 +156,7 @@ function validateSchema(value, schema, path = "$") {
 async function pathExists(path, verify) {
   try {
     await verify(path);
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await openSymlinkSafe(path, constants.O_RDONLY);
     await handle.close();
     return true;
   } catch (error) {
@@ -201,7 +201,7 @@ function normalizeLockInfo(payload) {
 async function readLockSnapshot(path, { verify }) {
   try {
     await verify(path);
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await openSymlinkSafe(path, constants.O_RDONLY);
     try {
       await verify(path);
       const stat = await handle.stat();
@@ -315,9 +315,9 @@ async function createOwnedLock(path, {
   metadata = {},
 } = {}) {
   await verify(path);
-  const handle = await open(
+  const handle = await openSymlinkSafe(
     path,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
     0o600,
   );
   const token = lockToken();
@@ -429,10 +429,10 @@ async function revalidateIdentityAndUnlink(path, {
   const parentChain = await snapshotParentChain(path);
   let handle;
   try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await openSymlinkSafe(path, constants.O_RDONLY);
   } catch (error) {
-    // ENOENT: unlinked in the window. ELOOP: a symlink was swapped in and
-    // O_NOFOLLOW refused to follow it. Both mean the authorized file is gone.
+    // ENOENT: unlinked in the window. ELOOP: a symlink was swapped in and the
+    // open refused it. Both mean the authorized file is gone.
     if (error.code === "ENOENT" || error.code === "ELOOP") {
       throw lockFailure("LOCK_REPLACED", `lock ${path} was replaced before recovery could complete`, context, lock);
     }
@@ -470,7 +470,12 @@ async function revalidateIdentityAndUnlink(path, {
 function identityInteger(value, name) {
   if (value === undefined || value === null) return undefined;
   const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+  // NTFS file IDs combine an MFT record number with a sequence number in the
+  // high bits, so they routinely exceed 2^53 and are not "safe" integers.
+  // Rejecting them would make operator lock recovery impossible on Windows for
+  // an identity this process itself reported, so integrality is what is
+  // required here, not exact representability.
+  if (!Number.isInteger(parsed) || parsed < 0) {
     throw new TrestleStateError(`${name} must be a non-negative integer`, "INVALID_LOCK_IDENTITY");
   }
   return parsed;
@@ -762,7 +767,7 @@ export class TrestleStateStore {
 
   async #readFile(pathSpec) {
     await this.#verifyPath(pathSpec);
-    const handle = await open(pathSpec.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await openSymlinkSafe(pathSpec.path, constants.O_RDONLY);
     try {
       await this.#verifyPath(pathSpec);
       await assertHandleMatchesPath(handle, pathSpec.path);
@@ -776,9 +781,9 @@ export class TrestleStateStore {
     const pending = `${pathSpec.path}.pending-${safeSegment(String(this.idGenerator()), "generated ID")}`;
     const pendingSpec = { ...pathSpec, path: pending };
     await this.#verifyPath(pendingSpec);
-    const handle = await open(
+    const handle = await openSymlinkSafe(
       pending,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
       0o600,
     );
     try {

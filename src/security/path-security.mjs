@@ -298,12 +298,107 @@ export async function assertFileHandleMatchesPath(handle, candidate, {
   return identity;
 }
 
-function noFollowFlags(flags) {
-  if (!Number.isInteger(constants.O_NOFOLLOW)) {
+const SUPPORTS_O_NOFOLLOW = Number.isInteger(constants.O_NOFOLLOW);
+
+/**
+ * The error a POSIX kernel raises for `O_NOFOLLOW` against a link. Reproduced
+ * verbatim on platforms without the flag so callers that already branch on
+ * `ELOOP` behave identically everywhere.
+ */
+function symlinkRefusal(target) {
+  const error = new Error(`ELOOP: symbolic link refused, open '${target}'`);
+  error.code = "ELOOP";
+  error.path = target;
+  return error;
+}
+
+/**
+ * Adds the kernel-level symlink refusal where the platform has one.
+ *
+ * `O_NOFOLLOW` makes the kernel refuse to open a symlink at all, which is a
+ * guarantee rather than a check. Windows has no equivalent exposed through
+ * Node, so there the link has to be excluded by observation instead - see
+ * `openSymlinkSafe`, which is the only supported way to take that path.
+ *
+ * A platform that is neither Windows nor `O_NOFOLLOW`-capable is unknown
+ * territory, so it still fails closed rather than being guessed at.
+ */
+export function symlinkSafeFlags(flags, {
+  platform = process.platform,
+  supportsNoFollow = SUPPORTS_O_NOFOLLOW,
+} = {}) {
+  if (!Number.isInteger(flags)) throw new TypeError("flags must be numeric");
+  if (supportsNoFollow) return flags | constants.O_NOFOLLOW;
+  if (platform !== "win32") {
     throw new PathSecurityError("O_NOFOLLOW is unavailable on this platform", "UNSUPPORTED_PLATFORM");
   }
-  if (!Number.isInteger(flags)) throw new TypeError("flags must be numeric");
-  return flags | constants.O_NOFOLLOW;
+  // Truncation happens as part of the open itself, so a symlinked target would
+  // already be destroyed by the time any post-open check could reject it. No
+  // caller needs this today; the guard exists so a future one cannot quietly
+  // introduce the hole.
+  if (Number.isInteger(constants.O_TRUNC) && (flags & constants.O_TRUNC) !== 0) {
+    throw new PathSecurityError(
+      "Truncating open cannot be made symlink-safe without O_NOFOLLOW",
+      "UNSUPPORTED_PLATFORM",
+    );
+  }
+  return flags;
+}
+
+/**
+ * Opens `target` while refusing to act on a symbolic link.
+ *
+ * Where `O_NOFOLLOW` exists this is exactly the historical behaviour: one open
+ * call, refused by the kernel, and the raw `errno` reaches the caller unchanged
+ * so existing `ELOOP`/`EEXIST` handling keeps working.
+ *
+ * Where it does not, the same property is reconstructed from two observations
+ * around the open - `lstat` first to narrow the window, and a
+ * descriptor-versus-path comparison afterwards to close it. The descriptor is
+ * pinned to whatever it actually opened, so a link swapped into the window
+ * makes the two disagree and the handle is closed and refused before any caller
+ * can read or write through it. A link is reported as `ELOOP` so callers cannot
+ * tell the platforms apart.
+ *
+ * The reconstruction is strictly weaker than a kernel refusal: it *detects*
+ * rather than *prevents*. It fails closed, and every write path in this
+ * codebase creates with `O_CREAT|O_EXCL` and renames into place, which the
+ * runtime refuses outright against an existing link.
+ */
+export async function openSymlinkSafe(target, flags, mode, {
+  openImpl = open,
+  lstatImpl = lstat,
+  platform = process.platform,
+  supportsNoFollow = SUPPORTS_O_NOFOLLOW,
+} = {}) {
+  const resolvedFlags = symlinkSafeFlags(flags, { platform, supportsNoFollow });
+  const openHandle = () => (mode === undefined
+    ? openImpl(target, resolvedFlags)
+    : openImpl(target, resolvedFlags, mode));
+  if (supportsNoFollow) return await openHandle();
+
+  try {
+    if ((await lstatImpl(target)).isSymbolicLink()) throw symlinkRefusal(target);
+  } catch (error) {
+    // A missing entry is normal for a create; anything else is real.
+    if (error.code !== "ENOENT") throw error;
+  }
+
+  const handle = await openHandle();
+  try {
+    const [opened, current] = await Promise.all([handle.stat(), lstatImpl(target)]);
+    if (current.isSymbolicLink()) throw symlinkRefusal(target);
+    // A link swapped in and back out again during the window would leave this
+    // descriptor on the attacker's file while the path looks ordinary, so
+    // identity has to be compared too, not just the link bit.
+    if (opened.dev !== current.dev || opened.ino !== current.ino) {
+      throw new PathSecurityError(`Path changed while it was being opened: ${target}`);
+    }
+    return handle;
+  } catch (error) {
+    await handle.close().catch(() => {});
+    throw error;
+  }
 }
 
 async function symlinkOpenError(error, candidate, lstatImpl) {
@@ -346,9 +441,7 @@ export async function openVerifiedFile(pin, candidate, {
 
   let handle;
   try {
-    handle = mode === undefined
-      ? await openImpl(absolute, noFollowFlags(flags))
-      : await openImpl(absolute, noFollowFlags(flags), mode);
+    handle = await openSymlinkSafe(absolute, flags, mode, { openImpl, lstatImpl });
   } catch (error) {
     throw await symlinkOpenError(error, absolute, lstatImpl);
   }

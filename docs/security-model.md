@@ -171,28 +171,43 @@ Linux and macOS are the supported platforms. `package.json` declares
 `EBADPLATFORM` rather than letting the constraint surface part-way through a
 run.
 
-The constraint is broader than the worktree fleet. Three of the guarantees in
-this document rest on POSIX primitives that Windows does not provide:
+The constraint is broader than the worktree fleet, and it is being worked down
+rather than argued away. Of the four things that stand between this codebase and
+Windows, one is now solved and three are not:
 
-- **Symlink-safe opens.** Audit and state writes open their target with
-  `O_NOFOLLOW`, so a symlink swapped in at the path is refused by the kernel
-  instead of followed. Where the flag does not exist the open fails closed with
-  `UNSUPPORTED_PLATFORM`, which takes out audit recording and the state store —
-  so *every* command loses the guarantee, not only `run --isolate`.
-- **Ownership proof.** Secure-hold verification reads the POSIX owner and mode
-  bits of every path component. Without `process.getuid` that proof cannot be
-  constructed, so the fleet fails closed with `INSECURE_CONTAINMENT`.
-- **Process-group termination.** Copilot, reviewer, and Git children are spawned
-  detached and signalled as a process group, so a hook or helper they fork
-  cannot outlive termination. Windows has no equivalent, so only the direct
-  child can be signalled.
+- **Symlink-safe opens — solved.** Audit, state and config reads used
+  `O_NOFOLLOW` directly, which Windows does not have, so *every* command failed
+  closed with `UNSUPPORTED_PLATFORM`. These now go through `openSymlinkSafe`,
+  which keeps the kernel refusal wherever it exists and reconstructs the same
+  property from an `lstat`/open/identity sequence where it does not. See
+  [Container sandbox](#container-sandbox) for the general shape of the argument:
+  the reconstruction detects rather than prevents, so it is weaker, and it fails
+  closed.
+- **Ownership proof — unsolved, and deliberately so.** Secure-hold verification
+  reads the POSIX owner and mode bits of every path component. Without
+  `process.getuid` that proof cannot be constructed, so the worktree fleet and
+  `run --isolate` fail closed with `INSECURE_CONTAINMENT`. Reconstructing it
+  from NTFS ACLs would mean a security-critical parser and a subprocess per path
+  component, to buy a guarantee weaker than the refusal it replaced. Failing
+  closed is the better answer.
+- **Process-group termination — unsolved.** Children are spawned detached and
+  signalled as a process group, so a hook or helper they fork cannot outlive
+  termination. `process.kill(-pid)` returns `ESRCH` on Windows. `taskkill /T`
+  reaps a tree, but only while the parent is alive and with no graceful signal,
+  so this one degrades **open** rather than closed.
+- **Lock lifecycle — unsolved.** Windows refuses to unlink a file that is still
+  open, raising `EPERM`/`EBUSY` where POSIX returns `ENOENT`. The per-key state
+  lock protocol assumes POSIX unlink semantics, and fails under concurrency on
+  Windows in a way that is not yet fully characterised.
 
-The first two fail **closed**, which is the correct outcome but leaves little
-that still runs. The third degrades **open**: a forked helper could survive a
-cancelled or timed-out run. A platform on which a containment guarantee silently
-weakens contradicts the fail-closed rule the rest of this document depends on,
-so the platform is refused at install time instead of being partially
-supported.
+That last one is why the platform is still refused at install time. The first
+three are understood and their trade-offs are written down; an
+uncharacterised failure in the locking protocol is not something to ship behind
+a supported-platform claim. Measured against the suite, the symlink-safe open
+work took Windows from 197 failing assertions across 26 files to 129 across 20;
+16 of the remainder are the fleet failing closed exactly as intended.
+
+Until the rest lands, WSL2 is the supported route from a Windows host.
 
 ### Windows via WSL2
 

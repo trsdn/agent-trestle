@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, link, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { access, link, lstat, mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAgentDefinition } from "../config/agent-definition.mjs";
@@ -23,7 +23,13 @@ import { runReviewGate } from "../review/gate.mjs";
 import { createGitDiffRunner, createProcessAdapter } from "../review/process-adapter.mjs";
 import { loadManifest, ManifestError } from "../manifest/manifest.mjs";
 import { runManifest } from "../run/run.mjs";
-import { PathSecurityError, pinDirectory, releasePin, verifyDescendant } from "../security/path-security.mjs";
+import {
+  openSymlinkSafe,
+  PathSecurityError,
+  pinDirectory,
+  releasePin,
+  verifyDescendant,
+} from "../security/path-security.mjs";
 import { createAuditRecorder, generateRunId, routeTaskId } from "../audit/recorder.mjs";
 import { runTrestleMcpStdio } from "../state/mcp-server.mjs";
 import { createTrestleStateStore, TrestleStateError } from "../state/store.mjs";
@@ -272,9 +278,9 @@ async function writeAtomicInitTarget(rootPin, target, targetName, content, { for
 
   let handle;
   try {
-    handle = await open(
+    handle = await openSymlinkSafe(
       pending,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
       0o600,
     );
     await handle.writeFile(content, "utf8");
