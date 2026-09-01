@@ -1,0 +1,8 @@
+# scripts/lint.mjs rejects CRLF, so line endings are a correctness concern here,
+# not a preference. Without this file a checkout on a machine with
+# core.autocrlf=true (the Windows default) materialises every file with CRLF and
+# fails lint on the entire repository before a single change is made.
+#
+# Normalise to LF in the index and check LF back out on every platform. The
+# repository is text-only, so there is no binary path to exempt.
+* text=auto eol=lf

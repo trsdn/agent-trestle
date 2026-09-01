@@ -129,6 +129,11 @@ are not yet stable and may change without a major version bump.
 
 ### Fixed
 
+- Added `.gitattributes` so text files normalise to LF in the index and check
+  out as LF on every platform. `scripts/lint.mjs` rejects CRLF, so a checkout on
+  a machine with `core.autocrlf=true` (the Windows default) previously
+  materialised the whole repository with CRLF and failed lint on 113 files
+  before any change was made.
 - A failed state-root initialisation no longer leaves directory creation running
   in the background. `health()` pinned the project, workstream, and config roots
   with `Promise.all`, which rejects on the first failure without stopping the
