@@ -5,6 +5,7 @@ import path from "node:path";
 import { after, test } from "node:test";
 import { promisify } from "node:util";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
+import { POSIX_OWNERSHIP_ONLY } from "../helpers/platform.mjs";
 import { EXIT_CODES, runCli } from "../../src/cli/main.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -67,7 +68,7 @@ async function worktreeList(projectRoot) {
   return stdout.split("\n").filter((line) => line.startsWith("worktree ")).map((line) => line.slice(9));
 }
 
-test("an isolated task runs inside its own provisioned worktree", async () => {
+test("an isolated task runs inside its own provisioned worktree", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   // The agent records the directory it was actually started in.
   const { projectRoot, binary } = await isolatedProject("provisioned", {
     copilotScript: "import { appendFileSync } from 'node:fs';\nappendFileSync(process.env.TRESTLE_TEST_CWD_LOG, process.cwd() + '\\n');",
@@ -103,7 +104,7 @@ test("an isolated task runs inside its own provisioned worktree", async () => {
   );
 });
 
-test("a successful task releases its worktree, a failed one retains it", async () => {
+test("a successful task releases its worktree, a failed one retains it", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const { projectRoot, binary } = await isolatedProject("lifetime", {
     copilotScript: "process.exit(process.env.TRESTLE_TEST_FAIL === '1' ? 4 : 0);",
   });
@@ -139,7 +140,7 @@ test("a successful task releases its worktree, a failed one retains it", async (
   assert.equal(retained.length, 1, "a failed task must retain its checkout for inspection");
 });
 
-test("concurrent tasks routed to one workstream never share a working tree", async () => {
+test("concurrent tasks routed to one workstream never share a working tree", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const { projectRoot, binary } = await isolatedProject("concurrent", {
     copilotScript: "import { appendFileSync } from 'node:fs';\nappendFileSync(process.env.TRESTLE_TEST_CWD_LOG, process.cwd() + '\\n');",
   });
@@ -164,7 +165,7 @@ test("concurrent tasks routed to one workstream never share a working tree", asy
   assert.deepEqual(observed, [...paths].sort());
 });
 
-test("an interrupted run strands no worktrees", async () => {
+test("an interrupted run strands no worktrees", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   // A slow agent gives the run time to be aborted mid-flight. The abort is
   // raised through the same AbortController the CLI wires SIGINT to, without
   // signalling the test runner itself.
@@ -211,7 +212,7 @@ test("an interrupted run strands no worktrees", async () => {
   );
 });
 
-test("a task that writes files inside its worktree succeeds and keeps the work on the branch", async () => {
+test("a task that writes files inside its worktree succeeds and keeps the work on the branch", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   // Regression: nothing in the run path commits, so a task that did real work
   // left an unclean checkout and `git worktree remove` refused it -- turning a
   // successful run into a failure and stranding the worktree. Every other
@@ -244,7 +245,7 @@ test("a task that writes files inside its worktree succeeds and keeps the work o
   assert.equal(stdout, "produced by the agent\n");
 });
 
-test("the same named manifest can be run twice with --isolate", async () => {
+test("the same named manifest can be run twice with --isolate", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   // Regression: worktree and branch names were derived from `manifest.id`, but
   // `git worktree add -b` refuses an existing branch and `remove` deliberately
   // leaves branches behind, so the second run of a named manifest failed on
@@ -264,7 +265,7 @@ test("the same named manifest can be run twice with --isolate", async () => {
   }
 });
 
-test("a failed task reports where its retained worktree is", async () => {
+test("a failed task reports where its retained worktree is", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   // Retention is useless if the operator is never told the checkout exists.
   const { projectRoot, binary } = await isolatedProject("retention-report", {
     copilotScript: "import { writeFileSync } from 'node:fs';\nwriteFileSync('partial.txt', 'half done\\n');\nprocess.exit(4);",

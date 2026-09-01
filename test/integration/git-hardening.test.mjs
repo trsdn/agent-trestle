@@ -5,6 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
+import { POSIX_OWNERSHIP_ONLY } from "../helpers/platform.mjs";
 import { checkOwnership, createOwnershipPolicy } from "../../src/ownership/index.mjs";
 import { createReviewGitAdapter, reviewFence, runReviewGate } from "../../src/review/index.mjs";
 import { createGitProcessAdapter, createWorktreeFleet } from "../../src/worktrees/index.mjs";
@@ -87,7 +88,7 @@ async function createReviewedWorktreeChange({
 test.beforeEach(initializeRepo);
 test.after(async () => rm(fixtureRoot, { recursive: true, force: true }));
 
-test("real worktree changes remain isolated and exact changed paths enforce ownership", async () => {
+test("real worktree changes remain isolated and exact changed paths enforce ownership", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   await mkdir(worktreeRoot, { recursive: true });
   const fleet = createWorktreeFleet({
     repoRoot,
@@ -115,7 +116,7 @@ test("real worktree changes remain isolated and exact changed paths enforce owne
   assert.equal(git(repoRoot, "worktree", "list", "--porcelain").includes(worktree.path), true);
 });
 
-test("real rename exposes both paths and blocks a producer who only owns the destination", async () => {
+test("real rename exposes both paths and blocks a producer who only owns the destination", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   await mkdir(worktreeRoot, { recursive: true });
   const fleet = createWorktreeFleet({
     repoRoot,
@@ -197,7 +198,7 @@ test("real review denies a literal backslash filename byte instead of treating i
   assert.equal(git(repoRoot, "show", `${worktree.branch}:owned\\critical.txt`), "reviewed");
 });
 
-test("real review merges the pinned head commit when its branch moves", async () => {
+test("real review merges the pinned head commit when its branch moves", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange();
   git(repoRoot, "checkout", "--detach", "HEAD");
   const exactGit = createReviewGitAdapter({ runner: spawnGitRunner() });
@@ -235,7 +236,7 @@ test("real review merges the pinned head commit when its branch moves", async ()
   assert.equal(ancestry.status, 1, "the moved branch tip must not be merged");
 });
 
-test("real review merges when the target base ref is unchecked out everywhere", async () => {
+test("real review merges when the target base ref is unchecked out everywhere", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange();
   const detachedAt = git(repoRoot, "rev-parse", "HEAD");
   git(repoRoot, "checkout", "--detach", "HEAD");
@@ -326,7 +327,7 @@ test("real review fails closed when Git reports multiple merge bases", async () 
   );
 });
 
-test("real review blocks when baseRef is checked out in the current worktree", async () => {
+test("real review blocks when baseRef is checked out in the current worktree", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange();
   const result = await runReviewGate({
     repoRoot,
@@ -348,7 +349,7 @@ test("real review blocks when baseRef is checked out in the current worktree", a
   assert.equal(git(repoRoot, "status", "--porcelain"), "");
 });
 
-test("real review blocks when baseRef is checked out in a linked worktree", async () => {
+test("real review blocks when baseRef is checked out in a linked worktree", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange();
   git(repoRoot, "checkout", "--detach", "HEAD");
   const linkedMainPath = path.join(fixtureRoot, "linked-main");
@@ -375,7 +376,7 @@ test("real review blocks when baseRef is checked out in a linked worktree", asyn
   assert.equal(git(repoRoot, "status", "--porcelain"), "");
 });
 
-test("real review merges into baseRef when another branch is checked out", async () => {
+test("real review merges into baseRef when another branch is checked out", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange();
   git(repoRoot, "checkout", "-b", "staging");
   const result = await runReviewGate({
@@ -397,7 +398,7 @@ test("real review merges into baseRef when another branch is checked out", async
   assert.equal(await readFile(path.join(repoRoot, "owned.txt"), "utf8"), "base\n");
 });
 
-test("real review blocks when the base moves before merge", async () => {
+test("real review blocks when the base moves before merge", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange();
   const result = await runReviewGate({
     repoRoot,
@@ -425,7 +426,7 @@ test("real review blocks when the base moves before merge", async () => {
   assert.equal(git(repoRoot, "show", "main:other.txt"), "base moved");
 });
 
-test("real review fails closed when base ref moves during update-ref compare-and-swap", async () => {
+test("real review fails closed when base ref moves during update-ref compare-and-swap", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange();
   git(repoRoot, "checkout", "--detach", "HEAD");
   let raced = false;
@@ -458,7 +459,7 @@ test("real review fails closed when base ref moves during update-ref compare-and
   assert.equal(git(repoRoot, "show", "main:other.txt"), "raced base move");
 });
 
-test("real review rolls back when target becomes checked out between pre-CAS check and update-ref", async () => {
+test("real review rolls back when target becomes checked out between pre-CAS check and update-ref", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange();
   git(repoRoot, "checkout", "--detach", "HEAD");
   const reviewedBaseOid = git(repoRoot, "rev-parse", "refs/heads/main");
@@ -520,7 +521,7 @@ test("real review rolls back when target becomes checked out between pre-CAS che
   assert.equal(git(linkedMainPath, "status", "--porcelain"), "");
 });
 
-test("conflicting reviewed merge leaves no MERGE_HEAD or index mutations", async () => {
+test("conflicting reviewed merge leaves no MERGE_HEAD or index mutations", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const worktree = await createReviewedWorktreeChange({ content: "reviewed branch\n" });
   await writeFile(path.join(repoRoot, "owned.txt"), "main branch\n");
   git(repoRoot, "add", "owned.txt");

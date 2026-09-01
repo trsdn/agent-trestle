@@ -36,19 +36,25 @@ function isDeletePending(resolved) {
 }
 
 /**
- * Whether a failure to resolve a path means the name is simply not there.
+ * Whether a failure to resolve or open a name means it is simply not there.
  *
  * POSIX says `ENOENT`. Windows says `ENOENT` too once the entry is fully gone,
- * but reports the delete-pending window - after the unlink, before the last
- * handle closes - as `EPERM` instead. Treating that as a hard error would make
- * an ordinary lock release look like a containment failure to any concurrent
- * reader. Walking up to the nearest resolvable ancestor is the behaviour
- * `ENOENT` already gets, and it is equally safe: the lexical containment check
- * and the per-component symlink scan have both already run.
+ * but during the delete-pending window - after the unlink, before the last
+ * handle closes - libuv surfaces the same condition as `EPERM`, `EBADF` or
+ * `EBUSY` depending on which syscall observed it. All three have been seen from
+ * `realpath` and `open` against a lock file another writer had just released.
+ *
+ * Treating them as hard errors made an ordinary lock release look like a
+ * containment failure to every concurrent reader. Walking up to the nearest
+ * resolvable ancestor is the behaviour `ENOENT` already gets, and it is equally
+ * safe: the lexical containment check and the per-component symlink scan have
+ * both already run before this point.
  */
-function isMissingDuringResolve(error) {
+const WINDOWS_VANISHED_CODES = new Set(["EPERM", "EBADF", "EBUSY"]);
+
+function isMissingDuringResolve(error, { platform = process.platform } = {}) {
   return error.code === "ENOENT"
-    || (process.platform === "win32" && error.code === "EPERM");
+    || (platform === "win32" && WINDOWS_VANISHED_CODES.has(error.code));
 }
 
 async function assertNoSymlinkComponents(target, { allowMissing = false } = {}) {  const absolute = path.resolve(target);
@@ -443,11 +449,13 @@ export async function openSymlinkSafe(target, flags, mode, {
       // A link is a refusal, not a race, so it is never retried.
       if (error.code === "ELOOP") throw error;
       // Everything else here is a state POSIX would not have surfaced at all.
-      // Windows reports an open against a delete-pending entry as EPERM, and a
-      // lock file legitimately replaced by another writer shows up as an
-      // identity mismatch. Retrying lets an ordinary race settle; an attacker
-      // who keeps winning it still runs out of attempts and is refused.
-      if (error.code !== "EPERM" && !(error instanceof PathSecurityError)) throw error;
+      // Windows reports an open against a delete-pending entry as EPERM/EBADF/
+      // EBUSY, and a lock file legitimately replaced by another writer shows up
+      // as an identity mismatch. Retrying lets an ordinary race settle; an
+      // attacker who keeps winning it still runs out of attempts and is refused.
+      const retryable = WINDOWS_VANISHED_CODES.has(error.code)
+        || error instanceof PathSecurityError;
+      if (!retryable) throw error;
       lastError = error;
     }
   }
