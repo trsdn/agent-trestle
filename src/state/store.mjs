@@ -231,8 +231,18 @@ async function readLockSnapshot(path, { verify }) {
   }
 }
 
-function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {
-  if (!lock) return null;
+/**
+ * A filesystem identity value (`ino`/`dev`) must be integral and non-negative,
+ * but it is *not* required to be a "safe" integer. NTFS file IDs combine an MFT
+ * record number with a sequence number in the high bits and routinely exceed
+ * 2^53, so demanding safety here would discard the identity of every lock on
+ * Windows and make operator recovery impossible.
+ */
+function isFileIdentity(value) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {  if (!lock) return null;
   const ageMs = lock.info.epoch === null ? null : Math.max(0, nowMs - lock.info.epoch);
   const sameHost = lock.info.host === HOST;
   const pidAlive = sameHost && lock.info.pid !== null ? Boolean(isProcessAlive(lock.info.pid)) : null;
@@ -268,8 +278,8 @@ function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {
 
 function unlockHint(context, lock, { recovery = false } = {}) {
   const hasToken = typeof lock?.token === "string" && lock.token.length > 0;
-  const hasInode = Number.isSafeInteger(lock?.ino);
-  const hasDevice = Number.isSafeInteger(lock?.dev);
+  const hasInode = isFileIdentity(lock?.ino);
+  const hasDevice = isFileIdentity(lock?.dev);
   const workstreamArgs = context.scope === "workstream"
     ? ["--workstream", context.workstreamId ?? "<workstream-id>"]
     : [];

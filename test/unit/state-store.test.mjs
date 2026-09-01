@@ -637,7 +637,15 @@ test("revalidates lock identity immediately before unlink and fails closed on re
   assert.equal(await readFile(path, "utf8"), "intruder");
 });
 
-test("fails closed on an intermediate-parent swap and preserves the outside file", async () => {
+test("fails closed on an intermediate-parent swap and preserves the outside file", {
+  // Windows refuses to rename a directory that still contains an open handle,
+  // so this swap cannot be staged there at all. The guarantee is not weaker on
+  // Windows - the OS blocks the attack one layer earlier - but it cannot be
+  // demonstrated from inside the suite.
+  skip: process.platform === "win32"
+    ? "parent-directory swap cannot be staged: Windows rename refuses while a handle is open"
+    : false,
+}, async () => {
   const outside = resolve(artifactRoot, "outside-parent");
   await mkdir(outside, { recursive: true });
   const outsideFile = resolve(outside, "raced.json.lock");

@@ -16,8 +16,42 @@ export function isWithin(root, candidate) {
     || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
 }
 
-async function assertNoSymlinkComponents(target, { allowMissing = false } = {}) {
-  const absolute = path.resolve(target);
+/**
+ * Recognises the location Windows moves an entry to when it is deleted while a
+ * handle is still open.
+ *
+ * NTFS implements POSIX-style delete-while-open by unlinking the name from its
+ * directory and parking the file under the reserved metadata directory
+ * `\$Extend\$Deleted` until the last handle closes. `lstat` on the original
+ * name reports `ENOENT`, exactly as POSIX would, but `realpath` still resolves
+ * it - to that reserved location. Read literally, a lock file another writer
+ * has just released therefore looks like a path that escaped the pinned root.
+ *
+ * `\$Extend` is NTFS-internal: user code cannot create, rename into, or write
+ * inside it, so matching it can only ever mean "this entry was unlinked" and
+ * cannot be used to smuggle a path past containment.
+ */
+function isDeletePending(resolved) {
+  return /^(?:\\\\\?\\)?[A-Za-z]:\\\$Extend\\\$Deleted\\/i.test(resolved);
+}
+
+/**
+ * Whether a failure to resolve a path means the name is simply not there.
+ *
+ * POSIX says `ENOENT`. Windows says `ENOENT` too once the entry is fully gone,
+ * but reports the delete-pending window - after the unlink, before the last
+ * handle closes - as `EPERM` instead. Treating that as a hard error would make
+ * an ordinary lock release look like a containment failure to any concurrent
+ * reader. Walking up to the nearest resolvable ancestor is the behaviour
+ * `ENOENT` already gets, and it is equally safe: the lexical containment check
+ * and the per-component symlink scan have both already run.
+ */
+function isMissingDuringResolve(error) {
+  return error.code === "ENOENT"
+    || (process.platform === "win32" && error.code === "EPERM");
+}
+
+async function assertNoSymlinkComponents(target, { allowMissing = false } = {}) {  const absolute = path.resolve(target);
   const parsed = path.parse(absolute);
   let current = parsed.root;
   for (const part of absolute.slice(parsed.root.length).split(path.sep).filter(Boolean)) {
@@ -175,12 +209,21 @@ export async function verifyDescendant(pin, candidate, { allowMissing = true } =
   while (true) {
     try {
       const existingRealPath = await realpath(existing);
+      if (isDeletePending(existingRealPath)) {
+        // Unlinked, not escaped - treat it exactly as the ENOENT that POSIX
+        // would have reported and keep walking up the chain.
+        if (existing === pin.path) {
+          throw new PathSecurityError(`Pinned root was deleted: ${pin.path}`);
+        }
+        existing = path.dirname(existing);
+        continue;
+      }
       if (!isWithin(pin.realPath, existingRealPath)) {
         throw new PathSecurityError(`Path resolves outside pinned root: ${candidate}`);
       }
       break;
     } catch (error) {
-      if (error.code !== "ENOENT" || existing === pin.path) throw error;
+      if (!isMissingDuringResolve(error) || existing === pin.path) throw error;
       existing = path.dirname(existing);
     }
   }
@@ -299,6 +342,18 @@ export async function assertFileHandleMatchesPath(handle, candidate, {
 }
 
 const SUPPORTS_O_NOFOLLOW = Number.isInteger(constants.O_NOFOLLOW);
+// Bounded so a benign race settles while an attacker who keeps winning it is
+// still refused. Backoff matters here: a delete-pending entry under heavy
+// contention can stay unopenable for longer than a few milliseconds, and the
+// whole budget is still well under a second. Only used where the kernel
+// refusal is unavailable.
+const EMULATED_OPEN_ATTEMPTS = 10;
+const EMULATED_RETRY_MS = 2;
+const EMULATED_RETRY_CAP_MS = 50;
+
+function sleep(ms) {
+  return new Promise((resolve) => { setTimeout(resolve, ms).unref?.(); });
+}
 
 /**
  * The error a POSIX kernel raises for `O_NOFOLLOW` against a link. Reproduced
@@ -370,6 +425,8 @@ export async function openSymlinkSafe(target, flags, mode, {
   lstatImpl = lstat,
   platform = process.platform,
   supportsNoFollow = SUPPORTS_O_NOFOLLOW,
+  attempts = EMULATED_OPEN_ATTEMPTS,
+  retryMs = EMULATED_RETRY_MS,
 } = {}) {
   const resolvedFlags = symlinkSafeFlags(flags, { platform, supportsNoFollow });
   const openHandle = () => (mode === undefined
@@ -377,6 +434,27 @@ export async function openSymlinkSafe(target, flags, mode, {
     : openImpl(target, resolvedFlags, mode));
   if (supportsNoFollow) return await openHandle();
 
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) await sleep(Math.min(retryMs * (2 ** (attempt - 1)), EMULATED_RETRY_CAP_MS));
+    try {
+      return await attemptEmulatedOpen(target, openHandle, lstatImpl);
+    } catch (error) {
+      // A link is a refusal, not a race, so it is never retried.
+      if (error.code === "ELOOP") throw error;
+      // Everything else here is a state POSIX would not have surfaced at all.
+      // Windows reports an open against a delete-pending entry as EPERM, and a
+      // lock file legitimately replaced by another writer shows up as an
+      // identity mismatch. Retrying lets an ordinary race settle; an attacker
+      // who keeps winning it still runs out of attempts and is refused.
+      if (error.code !== "EPERM" && !(error instanceof PathSecurityError)) throw error;
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+async function attemptEmulatedOpen(target, openHandle, lstatImpl) {
   try {
     if ((await lstatImpl(target)).isSymbolicLink()) throw symlinkRefusal(target);
   } catch (error) {
@@ -388,9 +466,9 @@ export async function openSymlinkSafe(target, flags, mode, {
   try {
     const [opened, current] = await Promise.all([handle.stat(), lstatImpl(target)]);
     if (current.isSymbolicLink()) throw symlinkRefusal(target);
-    // A link swapped in and back out again during the window would leave this
-    // descriptor on the attacker's file while the path looks ordinary, so
-    // identity has to be compared too, not just the link bit.
+    // A link swapped in and back out again would leave this descriptor on the
+    // attacker's file while the path itself looks ordinary, so identity has to
+    // be compared too, not just the link bit.
     if (opened.dev !== current.dev || opened.ino !== current.ino) {
       throw new PathSecurityError(`Path changed while it was being opened: ${target}`);
     }

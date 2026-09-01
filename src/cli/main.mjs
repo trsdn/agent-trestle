@@ -223,6 +223,19 @@ function positiveInteger(value, label, fallback) {
   return parsed;
 }
 
+/**
+ * Filesystem identities are validated separately from ordinary numeric options:
+ * NTFS file IDs routinely exceed 2^53, so requiring a *safe* integer would
+ * reject the very identity `state-lock` had just emitted in its recovery hint.
+ */
+function fileIdentityInteger(value, label) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new CliError(`${label} must be a non-negative integer`, EXIT_CODES.USAGE, "USAGE");
+  }
+  return parsed;
+}
+
 function strictlyPositiveInteger(value, label, fallback) {
   const parsed = positiveInteger(value, label, fallback);
   if (parsed < 1) {
@@ -829,10 +842,10 @@ async function stateUnlockCommand(options, cwd) {
   const { scope, store } = createStateCliStore(options, cwd);
   const expectedInode = options.expected_inode === undefined
     ? undefined
-    : positiveInteger(options.expected_inode, "--expected-inode");
+    : fileIdentityInteger(options.expected_inode, "--expected-inode");
   const expectedDevice = options.expected_device === undefined
     ? undefined
-    : positiveInteger(options.expected_device, "--expected-device");
+    : fileIdentityInteger(options.expected_device, "--expected-device");
   const hasToken = typeof options.expected_token === "string" && options.expected_token.trim() !== "";
   const recovery = options.recovery === true;
   // A well-formed lock is cleared by its token. A malformed (tokenless) lock is
