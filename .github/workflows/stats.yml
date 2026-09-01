@@ -1,0 +1,29 @@
+name: Repository stats
+
+# Renders the self-hosted repository statistics card required by criterion P09.
+# The card is committed to the `stats` branch rather than `main`, because `main`
+# requires status checks that a workflow push cannot satisfy.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * *"
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/stats.yml
+
+permissions:
+  contents: write
+
+jobs:
+  stats:
+    uses: trsdn/.github/.github/workflows/repo-stats.yml@main
+    with:
+      output-dir: .github/stats
+      theme: both
+      cards: repo-card
+      branch: stats
+    secrets:
+      STATS_TOKEN: ${{ secrets.STATS_TOKEN }}

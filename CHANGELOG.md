@@ -42,7 +42,32 @@ are not yet stable and may change without a major version bump.
 - Added a per-export API stability table documenting provisional and
   experimental subpath exports, including the especially unstable `./audit` and
   `./scheduler` APIs.
-
+- Conformance with the trsdn Repository Quality Standard v1.7.0.
+  `.github/conformance.yml` records the assessment result,
+  `docs/self-assessment.md` holds the per-criterion evidence,
+  `.github/badges/conformance.svg` is generated from the record, and
+  `.github/workflows/conformance.yml` fails the build when the two disagree or
+  when the assessment ages past the review cadence.
+- A self-hosted repository statistics card, generated on a schedule by
+  `.github/workflows/stats.yml` and committed to the `stats` branch, so README
+  activity is not fetched from a third-party rendering service at read time.
+- `.github/github-app.yml`, an intentional repository-scoped agent
+  configuration that delegates to `AGENTS.md` rather than restating it, and
+  disables remote control of sessions.
+- README sections declaring the primary language and localization scope, the
+  accessibility properties of the CLI and dashboard together with their known
+  limitations, and the privacy posture — what is collected (nothing), every
+  outbound destination and its purpose, where state and audit records live, and
+  what is retained.
+- `AGENTS.md` sections naming the forbidden and high-risk operations (history
+  rewriting, force pushes, deletion, destructive filesystem commands,
+  releasing, publishing, deployment, repository settings, secret handling), the
+  generated and machine-owned paths that must not be hand-edited, and the
+  attribution and review expectations for agent-authored changes.
+- `test/unit/dashboard-accessibility.test.mjs`, regression coverage for the
+  dashboard's document language, landmarks, skip link, focus affordance,
+  accessible names, empty-state announcements, relative text sizing, and the
+  rule that status is never conveyed by colour alone.
 - `AGENTS.md`, an orientation file for coding agents. It records the verified
   lint, test and packaging commands, notes that `npm ci` cannot work in a
   zero-dependency repository with no lockfile, sketches the runtime boundaries,
@@ -89,6 +114,11 @@ are not yet stable and may change without a major version bump.
 - Refreshed the provenance audit with the current tracked-file inventory, the
   delta since the original baseline, and explicit limits on what can be verified
   without access to the private predecessor project.
+- The README badge block now follows the standard's order — license, runtime,
+  CI, release, conformance — and every badge derives its value from an
+  authoritative source instead of restating a hand-maintained one. The status
+  note no longer repeats the version number, which had already drifted from
+  `package.json`.
 
 ### Fixed
 
