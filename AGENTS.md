@@ -164,10 +164,12 @@ request:**
   Untracked files in this repository are frequently the only copy of something.
 - **Run destructive filesystem commands** outside `test/.work/` and
   `test/.artifacts/`. Nothing else in the tree is scratch space.
-- **Release or publish.** Do not create `v*` tags, do not run `npm publish`,
-  and do not invoke `gh release create`. Releases are produced only by
-  [`.github/workflows/release.yml`](.github/workflows/release.yml); see
-  [Releasing and publishing](#releasing-and-publishing).
+- **Release or publish.** Do not create and push `v*` tags unless a maintainer
+  explicitly instructs you to do so in the current request (see
+  [Releasing and publishing](#releasing-and-publishing) for how). Never run
+  `npm publish` locally or invoke `gh release create` yourself, even under
+  such an instruction — publishing happens only through
+  [`.github/workflows/release.yml`](.github/workflows/release.yml).
 - **Deploy anything.** There is no deployment target, so any command that looks
   like one is a mistake.
 - **Touch repository settings**: branch protection, required checks, secrets,
@@ -226,8 +228,20 @@ are labelled so a reviewer knows what they are reading.
 
 ## Releasing and publishing
 
-Do not release by hand and do not run `npm publish` locally.
-[`.github/workflows/release.yml`](.github/workflows/release.yml) is triggered by
+By default, do not release by hand and do not run `npm publish` locally —
+releases are meant to flow through
+[`.github/workflows/release.yml`](.github/workflows/release.yml), triggered by
+a `v*` tag. If a maintainer explicitly instructs an agent, in the current
+request, to create and push a release tag (for example `git tag vX.Y.Z && git
+push origin vX.Y.Z`), the agent may do so; verify first that `package.json`'s
+`version` and the corresponding `CHANGELOG.md` section already agree with the
+requested tag (`node scripts/release.mjs verify --tag vX.Y.Z` checks this).
+Do not run `npm publish` locally or invoke `gh release create` yourself even
+under such an instruction — pushing the tag is sufficient to let the workflow
+below do the verify/publish/publish-npm sequence, including the OIDC-based
+npm provenance that a local `npm publish` cannot reproduce.
+
+The workflow itself is triggered by
 a `v*` tag and runs three jobs in order: `verify` (tag/manifest/changelog
 agreement via `scripts/release.mjs verify`, lint, full suite, `npm pack`, then a
 smoke test that installs the tarball into a clean consumer and asserts the
