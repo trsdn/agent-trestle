@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdir, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { validateConfig } from "../../src/config/config.mjs";
 import {
   resolveRoute,
@@ -57,7 +58,7 @@ test("rejects unknown IDs without fallback", () => {
   );
 });
 
-const fixtureRoot = path.resolve("test/.work/dispatch-routing");
+const fixtureRoot = await makeScratchRoot("dispatch-routing");
 
 test("workstream directories cannot escape the project root", async () => {
   await rm(fixtureRoot, { recursive: true, force: true });

@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import {
   BUILTIN_REVIEWER_AGENTS,
   SAFE_ARG_BYTES,
@@ -22,7 +23,8 @@ const nonce = "abcdefghijklmnop";
 const root = "/repo";
 const baseOid = "1".repeat(40);
 const headOid = "2".repeat(40);
-const processTreeRoot = path.resolve("test/.work/review-process-tree");
+const scratchRoot = await makeScratchRoot("review-hardening");
+const processTreeRoot = path.join(scratchRoot, "review-process-tree");
 
 function reviewerCommand(source, options = {}) {
   return {
@@ -602,7 +604,7 @@ test("review gate removes the reviewer home even when the reviewer process rejec
   await assert.rejects(() => stat(capturedHome), { code: "ENOENT" });
 });
 
-const agentDiscoveryRoot = path.resolve("test/.work/review-agent-discovery");
+const agentDiscoveryRoot = path.join(scratchRoot, "review-agent-discovery");
 
 async function writeAgentFixture(projectRoot, name, source) {
   await mkdir(path.join(projectRoot, ".github/agents"), { recursive: true });

@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { basename, resolve } from "node:path";
 import { after, test } from "node:test";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { createAuditSegmentWriter, reconcileAuditTask } from "../../src/audit/audit.mjs";
 
 // Regression coverage for the stale-lock reclaim race: the old design read a
@@ -13,7 +14,7 @@ import { createAuditSegmentWriter, reconcileAuditTask } from "../../src/audit/au
 // on a stale lock a writer rolls over to a brand-new, exclusively-owned segment
 // (atomic `wx` create) and leaves the abandoned lock/segment intact.
 
-const workRoot = resolve("test/.artifacts/audit-lock-race");
+const workRoot = await makeScratchRoot("audit-lock-race");
 const HOST = hostname();
 const CONCURRENCY = 30; // > 25 concurrent appends targeting one logical writer
 const ROUNDS = 6; // repeated, to shake out timing-dependent corruption

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-trestle.local/schemas/ownership.schema.json",
+  "title": "Agent Trestle ownership policy",
+  "description": "Maps repository-relative path globs to the actor allowed to change them. Ownership is deliberately not a .trestle/config.json key: it is merge policy, so it lives in its own explicitly supplied document.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "owners"],
+  "properties": {
+    "version": { "const": 1 },
+    "owners": {
+      "type": "object",
+      "description": "Actor ID to the repository-relative globs that actor owns. Supports *, ? and **.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "array",
+        "minItems": 1,
+        "uniqueItems": true,
+        "items": { "type": "string", "minLength": 1 }
+      }
+    },
+    "defaultOwner": {
+      "type": ["string", "null"],
+      "description": "Owner applied to a path no glob matches. Null means unowned.",
+      "default": null
+    },
+    "allowUnowned": {
+      "type": "boolean",
+      "description": "When false (the default) a changed path that no rule covers rejects the merge. Enabling this weakens the ownership invariant and must be deliberate.",
+      "default": false
+    },
+    "pathStyle": {
+      "enum": ["posix", "win32"],
+      "description": "Path interpretation for globs. Git reports repository-relative POSIX paths, so posix is the default and a literal backslash stays a filename byte.",
+      "default": "posix"
+    }
+  }
+}

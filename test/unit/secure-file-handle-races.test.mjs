@@ -2,13 +2,14 @@ import assert from "node:assert/strict";
 import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { createAuditSegmentWriter } from "../../src/audit/audit.mjs";
 import { loadAgentDefinition } from "../../src/config/agent-definition.mjs";
 import { loadConfig } from "../../src/config/config.mjs";
 import { resolveSkillPaths } from "../../src/config/skills.mjs";
 import { PathSecurityError } from "../../src/security/path-security.mjs";
 
-const workRoot = path.resolve("test/.work/secure-file-handle-races");
+const workRoot = await makeScratchRoot("secure-file-handle-races");
 const CONFIG = JSON.stringify({
   version: 1,
   project: { id: "safe-project" },

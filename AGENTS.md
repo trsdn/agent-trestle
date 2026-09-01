@@ -32,13 +32,17 @@ All of these were run and passed on Node 22.22.3 / npm 10.9.8.
 
 | Command | What it does | Verified result |
 | --- | --- | --- |
-| `npm run lint` | Syntax, JSON and whitespace checks, no deps | `Lint passed: 87 file(s) checked.` |
-| `npm run lint:fix` | Auto-repairs whitespace problems | — |
-| `npm test` | Full suite (`node --test`) | 244 tests, 242 pass, 2 skipped |
-| `npm run test:unit` | `test/unit/` only | 209 tests, 207 pass, 2 skipped |
-| `npm run test:integration` | `test/integration/` only | 34 tests, 34 pass |
-| `npm run test:coverage` | Full suite plus thresholds; Node 22 | 91.36% lines, 82.85% branches |
+| `npm run lint` | Syntax, JSON, whitespace and quote-style checks, no deps | `Lint passed: 112 file(s) checked.` |
+| `npm run lint:fix` | Auto-repairs whitespace and quote-style problems | prints `Fixed N file(s):` |
+| `npm test` | Full suite (`node --test`) | 327 tests, 325 pass, 2 skipped |
+| `npm run test:unit` | `test/unit/` only | 252 tests, 250 pass, 2 skipped |
+| `npm run test:integration` | `test/integration/` only | 73 tests, 73 pass |
+| `npm run test:coverage` | Full suite plus the `src/` floors, any supported Node | 91.95% lines, 82.89% branches, 91.78% functions |
 | `npm run check` | `lint` + `test` + `npm pack --dry-run` | exit 0 |
+
+Auto-fix is `npm run lint:fix`, never `npm run lint --fix`: npm consumes the
+`--fix` itself, so the script sees no flag, rewrites nothing, and still exits 0.
+The `Fixed N file(s):` line is the only confirmation the pass actually ran.
 
 `npm run check` is the gate to run before pushing. There is **no build step**:
 the package ships `src/` as-is, so `npm pack --dry-run` is what stands in for a

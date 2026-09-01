@@ -26,6 +26,9 @@
   "engines": {
     "node": ">=20"
   },
+  "os": [
+    "!win32"
+  ],
   "bin": {
     "agent-trestle": "./src/cli/agent-trestle.mjs"
   },
@@ -36,12 +39,16 @@
     "./copilot": "./src/copilot/index.mjs",
     "./dashboard": "./src/dashboard/index.mjs",
     "./dispatch": "./src/dispatch/index.mjs",
+    "./manifest": "./src/manifest/index.mjs",
     "./ownership": "./src/ownership/index.mjs",
     "./review": "./src/review/index.mjs",
+    "./run": "./src/run/index.mjs",
     "./scheduler": "./src/scheduler/index.mjs",
     "./state": "./src/state/index.mjs",
     "./worktrees": "./src/worktrees/index.mjs",
-    "./schemas/config.json": "./schemas/config.schema.json"
+    "./schemas/config.json": "./schemas/config.schema.json",
+    "./schemas/manifest.json": "./schemas/manifest.schema.json",
+    "./schemas/ownership.json": "./schemas/ownership.schema.json"
   },
   "publishConfig": {
     "access": "public"
@@ -51,6 +58,7 @@
     "schemas/",
     "templates/",
     "examples/",
+    "prompts/",
     "docs/",
     "README.md",
     "CHANGELOG.md",
@@ -64,7 +72,7 @@
     "test": "node --test",
     "test:unit": "node --test test/unit/*.test.mjs",
     "test:integration": "node --test test/integration/*.test.mjs",
-    "test:coverage": "node --test --experimental-test-coverage --test-coverage-exclude='test/**' --test-coverage-exclude='scripts/**' --test-coverage-lines=88 --test-coverage-branches=78 --test-coverage-functions=86",
+    "test:coverage": "node scripts/coverage.mjs",
     "check": "npm run lint && npm test && npm pack --dry-run"
   }
 }

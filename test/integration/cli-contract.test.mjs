@@ -4,10 +4,12 @@ import { hostname } from "node:os";
 import { dirname } from "node:path";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import * as library from "../../src/index.mjs";
 import { EXIT_CODES, main, runCli } from "../../src/cli/main.mjs";
 
-const fixtureRoot = path.resolve("test/.work/cli-contract");
+const scratchRoot = await makeScratchRoot("cli-contract");
+const fixtureRoot = path.join(scratchRoot, "cli-contract");
 
 function capture(cwd = fixtureRoot) {
   let stdout = "";
@@ -111,20 +113,53 @@ test("init, validate, and resolve form a working least-privilege flow", async ()
   await rm(fixtureRoot, { recursive: true, force: true });
 });
 
-test("unsupported commands fail explicitly in JSON", async () => {
+test("merge refuses by default and states which opt-in is missing", async () => {
+  const projectRoot = path.join(scratchRoot, "merge-gating");
+  await rm(projectRoot, { recursive: true, force: true });
+  await mkdir(projectRoot, { recursive: true });
+  const init = capture(projectRoot);
+  assert.equal(await runCli(["init", "--json"], init.io), EXIT_CODES.SUCCESS);
+
+  const { main } = await import("../../src/cli/main.mjs");
+  const review = ["review", "--base", "main", "--head", "topic", "--producer", "a", "--reviewer", "b"];
+
+  // The scaffolded config leaves permissions.autoMerge false, so the flag alone
+  // is refused before the gate runs at all.
+  const denied = capture(projectRoot);
+  assert.equal(await main([...review, "--merge", "--json"], denied.io), EXIT_CODES.BLOCKED);
+  assert.equal(JSON.parse(denied.stderr()).error.code, "AUTO_MERGE_UNAUTHORIZED");
+
+  // With autoMerge granted, an ownership policy and actor are still required.
+  const config = JSON.parse(await readFile(path.join(projectRoot, ".trestle", "config.json"), "utf8"));
+  config.permissions.autoMerge = true;
+  await writeFile(path.join(projectRoot, ".trestle", "config.json"), JSON.stringify(config));
+
+  const unattributed = capture(projectRoot);
+  assert.equal(await main([...review, "--merge", "--json"], unattributed.io), EXIT_CODES.USAGE);
+  assert.match(JSON.parse(unattributed.stderr()).error.message, /--ownership FILE and --actor ID/);
+
+  // A malformed policy is rejected before the gate runs.
+  await writeFile(path.join(projectRoot, "owners.json"), JSON.stringify({ version: 2, owners: {} }));
+  const badPolicy = capture(projectRoot);
+  assert.equal(
+    await main([...review, "--merge", "--ownership", "owners.json", "--actor", "a", "--json"], badPolicy.io),
+    EXIT_CODES.USAGE,
+  );
+  assert.equal(JSON.parse(badPolicy.stderr()).error.code, "INVALID_OWNERSHIP_POLICY");
+});
+
+test("run requires an explicit manifest", async () => {
   const invoked = capture();
-  const exitCode = await (async () => {
-    const { main } = await import("../../src/cli/main.mjs");
-    return main(["run", "--json"], invoked.io);
-  })();
-  assert.equal(exitCode, EXIT_CODES.NOT_SUPPORTED);
+  const { main } = await import("../../src/cli/main.mjs");
+  const exitCode = await main(["run", "--json"], invoked.io);
+  assert.equal(exitCode, EXIT_CODES.USAGE);
   const failure = JSON.parse(invoked.stderr());
   assert.equal(failure.ok, false);
-  assert.equal(failure.error.code, "NOT_SUPPORTED");
+  assert.equal(failure.error.code, "USAGE");
 });
 
 test("validate and doctor reject symlink project, config, and workstream paths", async () => {
-  const securityRoot = path.resolve("test/.work/cli-path-security");
+  const securityRoot = path.join(scratchRoot, "cli-path-security");
   const project = path.join(securityRoot, "project");
   await rm(securityRoot, { recursive: true, force: true });
   await mkdir(project, { recursive: true });
@@ -175,7 +210,7 @@ test("validate and doctor reject symlink project, config, and workstream paths",
 
 test("init rejects symlinked roots and symlinked init target ancestors", async () => {
   const { main } = await import("../../src/cli/main.mjs");
-  const securityRoot = path.resolve("test/.work/init-path-security");
+  const securityRoot = path.join(scratchRoot, "init-path-security");
   const project = path.join(securityRoot, "project");
   await rm(securityRoot, { recursive: true, force: true });
   await mkdir(project, { recursive: true });
@@ -211,7 +246,7 @@ test("init rejects symlinked roots and symlinked init target ancestors", async (
 
 test("init --force rejects symlinked target files and leaves outside files unchanged", async () => {
   const { main } = await import("../../src/cli/main.mjs");
-  const securityRoot = path.resolve("test/.work/init-force-symlink");
+  const securityRoot = path.join(scratchRoot, "init-force-symlink");
   const project = path.join(securityRoot, "project");
   const outside = path.join(securityRoot, "outside");
   await rm(securityRoot, { recursive: true, force: true });
@@ -236,7 +271,7 @@ test("init --force rejects symlinked target files and leaves outside files uncha
 });
 
 test("CLI preserves non-empty equals values in inline options", async () => {
-  const testRoot = path.resolve("test/.work/cli-equals-test");
+  const testRoot = path.join(scratchRoot, "cli-equals-test");
   await rm(testRoot, { recursive: true, force: true });
   await mkdir(testRoot, { recursive: true });
 
@@ -280,7 +315,7 @@ test("review requires --timeout-ms to be strictly positive", async () => {
 });
 
 test("state-lock and state-unlock expose the fail-closed stale-recovery contract", async () => {
-  const stateRoot = path.resolve("test/.work/cli-state-lock");
+  const stateRoot = path.join(scratchRoot, "cli-state-lock");
   const staleLock = path.join(
     stateRoot,
     ".trestle/state/workstreams/main/namespaces/values/one.json.lock",
@@ -340,7 +375,7 @@ test("state-lock and state-unlock expose the fail-closed stale-recovery contract
 });
 
 test("state-lock emits an executable tokenless hint that recovers a malformed crash-window lock", async () => {
-  const stateRoot = path.resolve("test/.work/cli-state-malformed");
+  const stateRoot = path.join(scratchRoot, "cli-state-malformed");
   const malformedLock = path.join(
     stateRoot,
     ".trestle/state/workstreams/main/namespaces/values/one.json.lock",
@@ -369,7 +404,7 @@ test("state-lock emits an executable tokenless hint that recovers a malformed cr
 
   // Execute the emitted CLI hint verbatim (argv derived from the exact string).
   const hintArgv = inspected.unlock.cli.split(" ").slice(1).concat("--json");
-  const differentCwd = path.resolve("test/.work/cli-state-unlock-other-cwd");
+  const differentCwd = path.join(scratchRoot, "cli-state-unlock-other-cwd");
   await mkdir(differentCwd, { recursive: true });
   const unlock = capture(differentCwd);
   assert.equal(await runCli(hintArgv, unlock.io), EXIT_CODES.SUCCESS);
@@ -391,7 +426,7 @@ test("state-lock emits an executable tokenless hint that recovers a malformed cr
 });
 
 test("state-unlock enforces token-or-identity option requirements and refuses live locks tokenlessly", async () => {
-  const stateRoot = path.resolve("test/.work/cli-state-unlock-guards");
+  const stateRoot = path.join(scratchRoot, "cli-state-unlock-guards");
   const lockFile = path.join(
     stateRoot,
     ".trestle/state/workstreams/main/namespaces/values/one.json.lock",
@@ -433,7 +468,7 @@ test("state-unlock enforces token-or-identity option requirements and refuses li
 
 test("init rejects unknown options such as --forcce before creating files", async () => {
   const { main } = await import("../../src/cli/main.mjs");
-  const testRoot = path.resolve("test/.work/cli-unknown-option");
+  const testRoot = path.join(scratchRoot, "cli-unknown-option");
   await rm(testRoot, { recursive: true, force: true });
   await mkdir(testRoot, { recursive: true });
 
@@ -457,7 +492,7 @@ test("init rejects unknown options such as --forcce before creating files", asyn
 
 test("value options reject a following flag as their value (--root --json)", async () => {
   const { main } = await import("../../src/cli/main.mjs");
-  const testRoot = path.resolve("test/.work/cli-root-json");
+  const testRoot = path.join(scratchRoot, "cli-root-json");
   await rm(testRoot, { recursive: true, force: true });
   await mkdir(testRoot, { recursive: true });
 
@@ -477,7 +512,7 @@ test("value options reject a following flag as their value (--root --json)", asy
 
 test("dispatch preserves repeatable --skill values", async () => {
   const { main } = await import("../../src/cli/main.mjs");
-  const testRoot = path.resolve("test/.work/cli-repeatable-skill");
+  const testRoot = path.join(scratchRoot, "cli-repeatable-skill");
   await rm(testRoot, { recursive: true, force: true });
   await mkdir(testRoot, { recursive: true });
 

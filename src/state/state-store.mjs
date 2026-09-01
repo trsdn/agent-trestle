@@ -1,1 +1,1 @@
-export * from './store.mjs';
+export * from "./store.mjs";

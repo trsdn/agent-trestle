@@ -21,19 +21,25 @@ Unknown options are rejected with exit code 2 *before* any command side effect.
 - `agent-trestle doctor [--root PATH] [--binary PATH]`
 - `agent-trestle resolve --project ID --workstream ID --role ID`
 - `agent-trestle dispatch --project ID --workstream ID --role ID
-  (--prompt TEXT | --prompt-file FILE) [--skill ID ...] [--binary PATH]`
+  (--prompt TEXT | --prompt-file FILE) [--skill ID ...] [--binary PATH]
+  [--no-audit]`
   where `--binary` overrides `config.copilot.binary` for this invocation.
 - `agent-trestle review --base REF --head REF --producer ID --reviewer ID
-  [--attempts N] [--timeout-ms MS]`
-  runs a read-only exact-diff gate. `--merge` returns `NOT_SUPPORTED`.
-  `--attempts` defaults to 1 and `--timeout-ms` to 120000.
+  [--attempts N] [--timeout-ms MS] [--no-audit]`
+  runs a read-only exact-diff gate. `--attempts` defaults to 1 and
+  `--timeout-ms` to 120000.
+  Adding `--merge --ownership FILE --actor ID` performs a gated merge; it
+  refuses unless `permissions.autoMerge` is enabled and every changed path is
+  owned by the actor. See [Merge semantics](merge-semantics.md).
 - `agent-trestle fleet create --worktree-root PATH --id ID
   [--start-point REF]`
 - `agent-trestle fleet remove --worktree-root PATH --id ID --path PATH
   [--force] [--outcome failed]`
 - `agent-trestle fleet prune --worktree-root PATH`
-- `agent-trestle dashboard --data FILE [--port PORT]`. The CLI exposes no
-  `--host` flag, so it always binds `127.0.0.1`.
+- `agent-trestle dashboard [--data FILE] [--port PORT]`. With no `--data` it
+  reads the project's own runtime records from `.trestle/audit/`; `--data`
+  renders an exported record instead. The CLI exposes no `--host` flag, so it
+  always binds `127.0.0.1`.
 - `agent-trestle state-server --workstream ID --schemas FILE` runs stdio JSON-RPC/MCP
   and writes no non-protocol output to stdout.
 - `agent-trestle state-lock --workstream ID --namespace NS --key KEY
@@ -61,8 +67,10 @@ Unknown options are rejected with exit code 2 *before* any command side effect.
   directory-capability unlink; automatic stale deletion is therefore disabled,
   and the operator must quiesce the state directory if the final syscall window
   is in the threat model.
-- `agent-trestle run` is reserved and returns `NOT_SUPPORTED`; no success-shaped
-  placeholder is emitted.
+- `agent-trestle run --manifest FILE [--concurrency N] [--binary PATH]
+  [--isolate] [--worktree-root PATH] [--no-audit]`
+  executes a task manifest: a dependency-ordered graph of agent dispatches.
+  See [Task manifests](#task-manifests) below.
 
 ## Exit codes
 
@@ -71,12 +79,179 @@ Unknown options are rejected with exit code 2 *before* any command side effect.
 | 0 | Success or a persistent server started |
 | 1 | Operation or dispatched process failed |
 | 2 | Invalid command or arguments |
-| 3 | Recognized feature is not yet supported |
+| 3 | Reserved. Previously "recognized feature is not yet supported"; no command emits it now that `run` is implemented, and it will not be reused for another meaning |
 | 4 | Environment/doctor check failed |
 | 5 | Policy or review blocked the requested operation |
 
 `dispatch` preserves process failure as exit code 1. A non-passing review exits
-5. The state server uses JSON-RPC error objects after startup.
+5. `run` exits 2 for a manifest that cannot produce a runnable graph, 1 when a
+task fails, and 5 when the graph is blocked. The state server uses JSON-RPC error
+objects after startup.
+
+## Audit records
+
+`dispatch`, `run`, `review` and `fleet` write tamper-evident audit segments under
+`.trestle/audit/` (already gitignored). Emission is **on by default** and each
+command accepts `--no-audit` to suppress it.
+
+Segments are NDJSON with a per-writer hash chain, laid out as
+`.trestle/audit/runs/<runId>/tasks/<taskId>/segments/<writerId>--<segmentId>.ndjson`.
+Writers are scoped per actor rather than funnelled through one global chain,
+because independent segments are what allow parallel writers to append without
+corrupting each other. Reconstruct a task's record with `reconcileAuditTask`
+from the `agent-trestle/audit` export.
+
+| Command | `runId` | `taskId` | `writerId` | Events |
+|---|---|---|---|---|
+| `dispatch` | generated `dispatch-…` | `project.workstream.role` | `dispatch` | `dispatch.started`, `dispatch.settled` |
+| `run` | manifest `id`, else generated | `run` | `run` | `run.started`, `run.settled` |
+| `run` (per task) | as above | manifest task `id` | `dispatch` | `dispatch.started`, `dispatch.settled` |
+| `review` | generated `review-…` | `review` | `review` | `review.started`, `review.settled` |
+| `fleet` | generated `fleet-…` | `fleet` | `fleet` | `fleet.created`, `fleet.removed`, `fleet.pruned` |
+| `run` (isolated task) | as run | manifest task `id` | `dispatch` | `worktree.created`, `worktree.released`, `worktree.retained` |
+
+`dispatch.started` is written *before* the process starts and records the
+resolved route, agent, selected skills, the effective permission set, the
+permission arguments actually passed, the working directory and the binary — so
+a dispatch that never settles still leaves evidence of what was granted.
+`dispatch.settled` records the terminal outcome including a non-zero exit.
+`review.settled` records the exact diff hash that was gated on, the pinned base
+and head OIDs, the changed paths and the verdict.
+
+Raw `stdout`/`stderr` are never copied into a record: an audit segment is an
+integrity record, not a log sink.
+
+**An audit write failure fails the command.** It is never downgraded to a
+warning, because a success-shaped result with no audit trail is exactly the
+outcome the subsystem exists to prevent. The failure surfaces with code
+`AUDIT_WRITE_FAILED`.
+
+## Dashboard runtime records
+
+`agent-trestle dashboard` is a read-only view with no authority to mutate or
+merge work. With no `--data` argument it reconstructs its model from the audit
+segments the runtime already wrote under `.trestle/audit/`, so the view cannot
+drift from what actually happened. `--data FILE` still renders an exported
+record for offline inspection.
+
+Reconstruction is bounded: at most the 50 most recent runs are read, each
+collection is trimmed to the configured item limit before normalization, and the
+normalizer then enforces total bytes, item count, string length and nesting depth
+— rejecting anything still over the limit rather than silently truncating it. A
+segment whose hash chain fails verification is reported as a failed `audit`
+entry rather than aborting the page — surfacing tampering is the point.
+
+The model is a set of record collections. A worked example is in
+[`examples/dashboard-record.json`](../examples/dashboard-record.json).
+
+| Collection | Contents |
+|---|---|
+| `projects` | `{ id, kind, name }` derived from dispatched routes |
+| `workstreams` | `{ id, kind, name, project }` |
+| `runs` | `{ id, kind, name, status, startedAt, finishedAt, concurrency, taskCount, failedTask? }` |
+| `tasks` | `{ id, kind, name, runId, status, startedAt, finishedAt, dispatches, project, workstream, role, agent, exitCode, message, worktree?, branch? }` |
+| `reviews` | `{ id, kind, name, status, baseRef, headRef, reviewedDiffHash, timestamp }` |
+| `audit` | `{ id, kind, name, status, segments, records, reconciliationHash }` per reconciled task |
+| `failures` | Derived from any run, task or review whose status is `failed`, `blocked` or `rejected` |
+| `generatedAt` | ISO timestamp of the render |
+
+A `dispatch` invoked outside `run` has no run-level writer, so a run entry is
+synthesized from its tasks rather than dropping them from the view.
+
+## Task manifests
+
+`run` takes a versioned JSON manifest describing a task graph. The contract is
+defined by [`schemas/manifest.schema.json`](../schemas/manifest.schema.json),
+which is closed: unknown keys are rejected rather than ignored. A worked example
+is in [`examples/task-manifest.json`](../examples/task-manifest.json).
+
+Policy lives in the manifest, not in `.trestle/config.json`. Per-run stop
+conditions are execution policy, so the project config schema stays small and
+closed while the manifest carries what varies per run.
+
+| Field | Required | Meaning |
+|---|---|---|
+| `version` | yes | Must be `1`. |
+| `id` | no | Run identifier, used to scope run records. |
+| `tasks[].id` | yes | Unique lowercase task ID. |
+| `tasks[].route` | yes | Explicit `project`, `workstream` and `role`. Never inferred. |
+| `tasks[].prompt` | one of | Literal prompt text. |
+| `tasks[].promptFile` | one of | Prompt path, resolved inside the project root. |
+| `tasks[].skills` | no | Skills requested for this task. |
+| `tasks[].dependsOn` | no | Task IDs that must complete first. |
+| `tasks[].stop` | no | At least one of `maxRounds`, `maxDurationMs`, `maxNoOpRounds`. |
+
+Exactly one of `prompt` and `promptFile` must be present. A `promptFile` is read
+through the same pinned-directory checks as project configuration, so a path
+that escapes the project root, or a symlink swapped mid-read, fails closed.
+
+### Execution semantics
+
+- Tasks run in dependency order. `--concurrency N` bounds how many run at once
+  and **defaults to 1**, preserving the least-surprise behaviour of `dispatch`.
+- A task with no `stop` object runs exactly once.
+- A task with a `stop` object runs repeated rounds until it converges or hits a
+  declared bound. Convergence is measured with a work signature over the
+  workstream's Git state (`HEAD` plus `git status`), so a round that changed
+  nothing terminates the task with reason `no-op`. Other reasons are
+  `max-rounds` and `max-duration`.
+- A non-zero exit, a timeout, or an output-cap kill fails the task. A failed
+  process is never reported as a successful task.
+- A task failure aborts the run; dependent tasks stay `pending` and are reported
+  as such.
+- `SIGINT`/`SIGTERM` abort the run and tear down running process trees through
+  the existing supervision path.
+
+### Worktree isolation
+
+By default a task runs in the workstream directory resolved from the project
+root, so two tasks routed to the same workstream share one working tree. Pass
+`--isolate` to give **each task its own Git worktree** instead:
+
+- The worktree is created when the task starts and its path becomes the agent
+  process's working directory.
+- The fleet root defaults to `.trestle/worktrees/` (already gitignored) and can
+  be moved with `--worktree-root PATH`.
+- Each task gets a per-run branch (`trestle/task-…`), which is the head ref
+  `review` can gate on.
+
+Worktree lifetime is bound to the work, and the three outcomes differ
+deliberately:
+
+| Outcome | Worktree | Why |
+|---|---|---|
+| Task completed | removed | Nothing left to inspect. |
+| Task failed | **retained** | The operator needs to see what the agent actually produced. Reported as `worktreeStatus: "retained"`. |
+| Run interrupted | removed | An abort is the operator stopping the run, not a reviewable result. Accumulating a checkout on every interruption would be a leak, not evidence. |
+
+A failed task and an interrupted one both surface as a non-`ok` execution, so
+they are told apart by the process `aborted` flag rather than by whether the
+task threw.
+
+On interruption the run releases every worktree it still holds and then runs
+`git worktree prune`, so an aborted run leaves nothing registered with Git.
+
+`--isolate` requires the project root to be a Git repository, and the fleet
+fails closed with `INSECURE_CONTAINMENT` rather than operating on a directory
+whose ownership cannot be proven — which is also why it does not work on
+Windows.
+
+### Failing before side effects
+
+A manifest that cannot produce a runnable graph is rejected with exit code 2
+*before any process is spawned*. This includes unknown keys, a missing or
+duplicated prompt source, a dependency on an unknown task, a self-dependency, a
+dependency cycle (reported with the offending task IDs), and a route naming an
+unknown project, workstream or role.
+
+### Reported output
+
+`--json` reports the graph: per-task `status`, `rounds`, the `stop` reason, and
+one entry per dispatch. Raw `stdout`/`stderr` are summarized as `stdoutBytes`
+and `stderrBytes` rather than embedded, because each stream is capped at 10 MiB
+per dispatch and a multi-task, multi-round graph would otherwise emit a payload
+hundreds of megabytes wide. Use `dispatch` when you need the raw output of a
+single agent invocation.
 
 ## State server tool surface
 

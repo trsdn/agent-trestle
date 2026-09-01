@@ -1,59 +1,59 @@
-import { randomBytes } from 'node:crypto';
-import { constants } from 'node:fs';
-import { lstat, mkdir, open, readdir, rename, rm } from 'node:fs/promises';
-import { hostname } from 'node:os';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
-import { pinDirectory, releasePin, verifyDescendant, verifyPinnedDirectory } from '../security/path-security.mjs';
+import { randomBytes } from "node:crypto";
+import { constants } from "node:fs";
+import { lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
+import { hostname } from "node:os";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
+import { pinDirectory, releasePin, verifyDescendant, verifyPinnedDirectory } from "../security/path-security.mjs";
 
 const DEFAULT_VERSION = 1;
 const LOCK_RETRY_MS = 10;
 const LOCK_TIMEOUT_MS = 5_000;
 const LOCK_STALE_MS = 30_000;
-const LOCK_RECOVERY_SUFFIX = '.recovery';
+const LOCK_RECOVERY_SUFFIX = ".recovery";
 const HOST = hostname();
 
 export class TrestleStateError extends Error {
   constructor(message, code, details = undefined) {
     super(message);
-    this.name = 'TrestleStateError';
+    this.name = "TrestleStateError";
     this.code = code;
     this.details = details;
   }
 }
 
 function requireAbsoluteRoot(name, value) {
-  if (typeof value !== 'string' || !isAbsolute(value)) {
-    throw new TrestleStateError(`${name} must be an explicit absolute path`, 'INVALID_ROOT');
+  if (typeof value !== "string" || !isAbsolute(value)) {
+    throw new TrestleStateError(`${name} must be an explicit absolute path`, "INVALID_ROOT");
   }
   return resolve(value);
 }
 
 function safeSegment(value, name) {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
-    throw new TrestleStateError(`${name} contains invalid characters`, 'INVALID_PATH');
+  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
+    throw new TrestleStateError(`${name} contains invalid characters`, "INVALID_PATH");
   }
   return value;
 }
 
 function safeKey(key) {
-  if (typeof key !== 'string' || key.length === 0 || key.includes('\0') || isAbsolute(key)) {
-    throw new TrestleStateError('key must be a non-empty relative path', 'INVALID_PATH');
+  if (typeof key !== "string" || key.length === 0 || key.includes("\0") || isAbsolute(key)) {
+    throw new TrestleStateError("key must be a non-empty relative path", "INVALID_PATH");
   }
-  const parts = key.split('/');
-  if (parts.some((part) => !part || part === '.' || part === '..' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(part))) {
-    throw new TrestleStateError('key contains invalid path segments', 'INVALID_PATH');
+  const parts = key.split("/");
+  if (parts.some((part) => !part || part === "." || part === ".." || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(part))) {
+    throw new TrestleStateError("key contains invalid path segments", "INVALID_PATH");
   }
   return parts;
 }
 
 function within(root, candidate) {
   const rel = relative(root, candidate);
-  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel));
+  return rel === "" || (!rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel));
 }
 
 function assertWithin(root, candidate) {
   if (!within(root, candidate)) {
-    throw new TrestleStateError('resolved path escapes its state root', 'PATH_TRAVERSAL');
+    throw new TrestleStateError("resolved path escapes its state root", "PATH_TRAVERSAL");
   }
 }
 
@@ -61,8 +61,8 @@ function assertConfigArtifactKey(key) {
   const parts = safeKey(key);
   if (parts.length !== 1) {
     throw new TrestleStateError(
-      'config keys must name one immediate JSON artifact',
-      'INVALID_PATH',
+      "config keys must name one immediate JSON artifact",
+      "INVALID_PATH",
     );
   }
   return parts;
@@ -78,7 +78,7 @@ function defaultProcessAlive(pid) {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return error.code === 'EPERM';
+    return error.code === "EPERM";
   }
 }
 
@@ -87,7 +87,7 @@ function sleep(ms) {
 }
 
 function lockToken() {
-  return randomBytes(16).toString('hex');
+  return randomBytes(16).toString("hex");
 }
 
 function lockTimestamp(clockMs) {
@@ -111,29 +111,29 @@ function normalizeSchemas(schemas) {
   return schemas instanceof Map ? schemas : new Map(Object.entries(schemas ?? {}));
 }
 
-function validateSchema(value, schema, path = '$') {
-  if (typeof schema === 'function') {
+function validateSchema(value, schema, path = "$") {
+  if (typeof schema === "function") {
     const result = schema(value);
-    if (result === false) throw new TrestleStateError(`schema validation failed at ${path}`, 'SCHEMA_VALIDATION');
+    if (result === false) throw new TrestleStateError(`schema validation failed at ${path}`, "SCHEMA_VALIDATION");
     return;
   }
-  if (!schema || typeof schema !== 'object') {
-    throw new TrestleStateError('mutable namespaces require a schema or validator', 'SCHEMA_REQUIRED');
+  if (!schema || typeof schema !== "object") {
+    throw new TrestleStateError("mutable namespaces require a schema or validator", "SCHEMA_REQUIRED");
   }
   if (schema.enum && !schema.enum.some((item) => Object.is(item, value))) {
-    throw new TrestleStateError(`value at ${path} is not in enum`, 'SCHEMA_VALIDATION');
+    throw new TrestleStateError(`value at ${path} is not in enum`, "SCHEMA_VALIDATION");
   }
   if (schema.type) {
-    const actual = Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value;
+    const actual = Array.isArray(value) ? "array" : value === null ? "null" : typeof value;
     if (actual !== schema.type) {
-      throw new TrestleStateError(`expected ${schema.type} at ${path}, received ${actual}`, 'SCHEMA_VALIDATION');
+      throw new TrestleStateError(`expected ${schema.type} at ${path}, received ${actual}`, "SCHEMA_VALIDATION");
     }
   }
-  if (schema.type === 'object') {
+  if (schema.type === "object") {
     const required = schema.required ?? [];
     for (const property of required) {
       if (!Object.hasOwn(value, property)) {
-        throw new TrestleStateError(`missing required property ${path}.${property}`, 'SCHEMA_VALIDATION');
+        throw new TrestleStateError(`missing required property ${path}.${property}`, "SCHEMA_VALIDATION");
       }
     }
     for (const [property, childSchema] of Object.entries(schema.properties ?? {})) {
@@ -142,12 +142,12 @@ function validateSchema(value, schema, path = '$') {
     if (schema.additionalProperties === false) {
       const known = new Set(Object.keys(schema.properties ?? {}));
       const extra = Object.keys(value).find((property) => !known.has(property));
-      if (extra) throw new TrestleStateError(`unexpected property ${path}.${extra}`, 'SCHEMA_VALIDATION');
+      if (extra) throw new TrestleStateError(`unexpected property ${path}.${extra}`, "SCHEMA_VALIDATION");
     }
   }
-  if (schema.type === 'array') {
+  if (schema.type === "array") {
     if (schema.minItems !== undefined && value.length < schema.minItems) {
-      throw new TrestleStateError(`too few items at ${path}`, 'SCHEMA_VALIDATION');
+      throw new TrestleStateError(`too few items at ${path}`, "SCHEMA_VALIDATION");
     }
     if (schema.items) value.forEach((item, index) => validateSchema(item, schema.items, `${path}[${index}]`));
   }
@@ -160,7 +160,7 @@ async function pathExists(path, verify) {
     await handle.close();
     return true;
   } catch (error) {
-    if (error.code === 'ENOENT') return false;
+    if (error.code === "ENOENT") return false;
     throw error;
   }
 }
@@ -168,12 +168,12 @@ async function pathExists(path, verify) {
 async function assertHandleMatchesPath(handle, path) {
   const [opened, current] = await Promise.all([handle.stat(), lstat(path)]);
   if (current.isSymbolicLink() || opened.dev !== current.dev || opened.ino !== current.ino) {
-    throw new TrestleStateError('state path changed while it was in use', 'PATH_TRAVERSAL');
+    throw new TrestleStateError("state path changed while it was in use", "PATH_TRAVERSAL");
   }
 }
 
 function normalizeLockInfo(payload) {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return {
       malformed: true,
       token: null,
@@ -183,11 +183,11 @@ function normalizeLockInfo(payload) {
       acquiredAt: null,
     };
   }
-  const token = typeof payload.token === 'string' && payload.token.length > 0 ? payload.token : null;
+  const token = typeof payload.token === "string" && payload.token.length > 0 ? payload.token : null;
   const pid = Number.isInteger(payload.pid) ? payload.pid : null;
-  const host = typeof payload.host === 'string' && payload.host.length > 0 ? payload.host : null;
-  const epoch = typeof payload.epoch === 'number' && Number.isFinite(payload.epoch) ? payload.epoch : null;
-  const acquiredAt = typeof payload.acquiredAt === 'string' && payload.acquiredAt.length > 0 ? payload.acquiredAt : null;
+  const host = typeof payload.host === "string" && payload.host.length > 0 ? payload.host : null;
+  const epoch = typeof payload.epoch === "number" && Number.isFinite(payload.epoch) ? payload.epoch : null;
+  const acquiredAt = typeof payload.acquiredAt === "string" && payload.acquiredAt.length > 0 ? payload.acquiredAt : null;
   return {
     malformed: token === null || pid === null || host === null || epoch === null,
     token,
@@ -209,14 +209,14 @@ async function readLockSnapshot(path, { verify }) {
       try {
         current = await lstat(path);
       } catch (error) {
-        if (error.code === 'ENOENT') return null;
+        if (error.code === "ENOENT") return null;
         throw error;
       }
       if (current.isSymbolicLink()) {
-        throw new TrestleStateError('state path changed while it was in use', 'PATH_TRAVERSAL');
+        throw new TrestleStateError("state path changed while it was in use", "PATH_TRAVERSAL");
       }
       if (stat.dev !== current.dev || stat.ino !== current.ino) return null;
-      const text = await handle.readFile('utf8');
+      const text = await handle.readFile("utf8");
       try {
         return { path, stat, info: normalizeLockInfo(JSON.parse(text)) };
       } catch {
@@ -226,7 +226,7 @@ async function readLockSnapshot(path, { verify }) {
       await handle.close();
     }
   } catch (error) {
-    if (error.code === 'ENOENT') return null;
+    if (error.code === "ENOENT") return null;
     throw error;
   }
 }
@@ -237,14 +237,14 @@ function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {
   const sameHost = lock.info.host === HOST;
   const pidAlive = sameHost && lock.info.pid !== null ? Boolean(isProcessAlive(lock.info.pid)) : null;
   const status = lock.info.malformed
-    ? 'operator-recovery-required'
+    ? "operator-recovery-required"
     : sameHost && pidAlive === false
-      ? 'operator-recovery-required'
+      ? "operator-recovery-required"
       : sameHost && pidAlive === true
-        ? 'live'
+        ? "live"
         : ageMs !== null && ageMs > staleMs
-          ? 'operator-recovery-required'
-          : 'live-or-unknown';
+          ? "operator-recovery-required"
+          : "live-or-unknown";
   return {
     path: lock.path,
     token: lock.info.token,
@@ -258,7 +258,7 @@ function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {
     malformed: lock.info.malformed,
     status,
     canAutoRecover: false,
-    needsOperator: status === 'operator-recovery-required',
+    needsOperator: status === "operator-recovery-required",
     staleMs,
     ino: lock.stat.ino,
     dev: lock.stat.dev,
@@ -267,27 +267,27 @@ function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {
 }
 
 function unlockHint(context, lock, { recovery = false } = {}) {
-  const hasToken = typeof lock?.token === 'string' && lock.token.length > 0;
+  const hasToken = typeof lock?.token === "string" && lock.token.length > 0;
   const hasInode = Number.isSafeInteger(lock?.ino);
   const hasDevice = Number.isSafeInteger(lock?.dev);
-  const workstreamArgs = context.scope === 'workstream'
-    ? ['--workstream', context.workstreamId ?? '<workstream-id>']
+  const workstreamArgs = context.scope === "workstream"
+    ? ["--workstream", context.workstreamId ?? "<workstream-id>"]
     : [];
-  const rootArgs = context.projectRoot ? ['--root', context.projectRoot] : [];
+  const rootArgs = context.projectRoot ? ["--root", context.projectRoot] : [];
   const baseArgs = [
     ...rootArgs,
-    '--scope', context.scope,
+    "--scope", context.scope,
     ...workstreamArgs,
-    '--namespace', context.namespace,
-    '--key', context.key,
-    ...(recovery ? ['--recovery'] : []),
+    "--namespace", context.namespace,
+    "--key", context.key,
+    ...(recovery ? ["--recovery"] : []),
   ];
-  const tokenArgs = hasToken ? ['--expected-token', lock.token] : [];
-  const inodeArgs = hasInode ? ['--expected-inode', String(lock.ino)] : [];
-  const deviceArgs = hasDevice ? ['--expected-device', String(lock.dev)] : [];
+  const tokenArgs = hasToken ? ["--expected-token", lock.token] : [];
+  const inodeArgs = hasInode ? ["--expected-inode", String(lock.ino)] : [];
+  const deviceArgs = hasDevice ? ["--expected-device", String(lock.dev)] : [];
   return {
-    tool: 'trestle_state_unlock',
-    authorization: hasToken ? 'expected-token' : 'expected-identity',
+    tool: "trestle_state_unlock",
+    authorization: hasToken ? "expected-token" : "expected-identity",
     arguments: {
       scope: context.scope,
       namespace: context.namespace,
@@ -297,7 +297,7 @@ function unlockHint(context, lock, { recovery = false } = {}) {
       ...(hasInode ? { expectedInode: lock.ino } : {}),
       ...(hasDevice ? { expectedDevice: lock.dev } : {}),
     },
-    cli: `agent-trestle state-unlock ${baseArgs.concat(tokenArgs, inodeArgs, deviceArgs).join(' ')}`.trim(),
+    cli: `agent-trestle state-unlock ${baseArgs.concat(tokenArgs, inodeArgs, deviceArgs).join(" ")}`.trim(),
   };
 }
 
@@ -323,7 +323,7 @@ async function createOwnedLock(path, {
   const token = lockToken();
   const identity = lockIdentity(token, clockMs, metadata);
   try {
-    await handle.writeFile(`${JSON.stringify(identity)}\n`, 'utf8');
+    await handle.writeFile(`${JSON.stringify(identity)}\n`, "utf8");
     await handle.sync();
     await verify(path);
     await assertHandleMatchesPath(handle, path);
@@ -345,7 +345,7 @@ async function releaseOwnedLock(path, handle, token, verify, { beforeRemove } = 
       && current.info.token === token,
     );
   } catch (error) {
-    if (error.code !== 'ENOENT') {
+    if (error.code !== "ENOENT") {
       await handle.close().catch(() => {});
       throw error;
     }
@@ -354,7 +354,7 @@ async function releaseOwnedLock(path, handle, token, verify, { beforeRemove } = 
     await verify(path);
     const parentChain = await snapshotParentChain(path);
     await assertHandleMatchesPath(handle, path);
-    await beforeRemove?.({ path, phase: 'release' });
+    await beforeRemove?.({ path, phase: "release" });
     await verify(path);
     await assertParentChainStable(parentChain);
     await rm(path, { force: true });
@@ -368,7 +368,7 @@ async function snapshotParentChain(path) {
   while (true) {
     const info = await lstat(current);
     if (info.isSymbolicLink()) {
-      throw new TrestleStateError(`lock parent contains a symbolic link: ${current}`, 'PATH_TRAVERSAL');
+      throw new TrestleStateError(`lock parent contains a symbolic link: ${current}`, "PATH_TRAVERSAL");
     }
     chain.push({ path: current, dev: info.dev, ino: info.ino });
     const parent = dirname(current);
@@ -384,10 +384,10 @@ async function assertParentChainStable(chain) {
     try {
       current = await lstat(expected.path);
     } catch (error) {
-      if (error.code === 'ENOENT') {
+      if (error.code === "ENOENT") {
         throw new TrestleStateError(
           `lock parent changed before removal: ${expected.path}`,
-          'LOCK_REPLACED',
+          "LOCK_REPLACED",
         );
       }
       throw error;
@@ -399,7 +399,7 @@ async function assertParentChainStable(chain) {
     ) {
       throw new TrestleStateError(
         `lock parent changed before removal: ${expected.path}`,
-        'LOCK_REPLACED',
+        "LOCK_REPLACED",
       );
     }
   }
@@ -433,8 +433,8 @@ async function revalidateIdentityAndUnlink(path, {
   } catch (error) {
     // ENOENT: unlinked in the window. ELOOP: a symlink was swapped in and
     // O_NOFOLLOW refused to follow it. Both mean the authorized file is gone.
-    if (error.code === 'ENOENT' || error.code === 'ELOOP') {
-      throw lockFailure('LOCK_REPLACED', `lock ${path} was replaced before recovery could complete`, context, lock);
+    if (error.code === "ENOENT" || error.code === "ELOOP") {
+      throw lockFailure("LOCK_REPLACED", `lock ${path} was replaced before recovery could complete`, context, lock);
     }
     throw error;
   }
@@ -446,7 +446,7 @@ async function revalidateIdentityAndUnlink(path, {
       && opened.dev === expectedDev
       && opened.ino === expectedIno;
     if (!stable) {
-      throw lockFailure('LOCK_REPLACED', `lock ${path} was replaced before recovery could complete`, context, lock);
+      throw lockFailure("LOCK_REPLACED", `lock ${path} was replaced before recovery could complete`, context, lock);
     }
     await verify(path);
     await assertParentChainStable(parentChain);
@@ -459,7 +459,7 @@ async function revalidateIdentityAndUnlink(path, {
       || refreshed.dev !== expectedDev
       || refreshed.ino !== expectedIno
     ) {
-      throw lockFailure('LOCK_REPLACED', `lock ${path} was replaced before recovery could complete`, context, lock);
+      throw lockFailure("LOCK_REPLACED", `lock ${path} was replaced before recovery could complete`, context, lock);
     }
     await rm(path, { force: true });
   } finally {
@@ -469,9 +469,9 @@ async function revalidateIdentityAndUnlink(path, {
 
 function identityInteger(value, name) {
   if (value === undefined || value === null) return undefined;
-  const parsed = typeof value === 'number' ? value : Number(value);
+  const parsed = typeof value === "number" ? value : Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new TrestleStateError(`${name} must be a non-negative integer`, 'INVALID_LOCK_IDENTITY');
+    throw new TrestleStateError(`${name} must be a non-negative integer`, "INVALID_LOCK_IDENTITY");
   }
   return parsed;
 }
@@ -499,10 +499,10 @@ async function acquireRecoveryBarrier(recoveryPath, {
       return await createOwnedLock(recoveryPath, {
         verify,
         clockMs,
-        metadata: { purpose: 'state-lock-recovery', ...metadata },
+        metadata: { purpose: "state-lock-recovery", ...metadata },
       });
     } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
+      if (error.code !== "EEXIST") throw error;
     }
     const barrier = await inspectLock(recoveryPath, {
       verify,
@@ -513,7 +513,7 @@ async function acquireRecoveryBarrier(recoveryPath, {
     if (!barrier) continue;
     if (barrier.canAutoRecover || barrier.needsOperator) {
       throw lockFailure(
-        'LOCK_STALE',
+        "LOCK_STALE",
         `recovery barrier ${recoveryPath} requires explicit operator recovery`,
         context,
         barrier,
@@ -522,7 +522,7 @@ async function acquireRecoveryBarrier(recoveryPath, {
     }
     if (clockMs() >= deadlineMs) {
       throw lockFailure(
-        'LOCK_TIMEOUT',
+        "LOCK_TIMEOUT",
         `timed out serializing lock recovery ${recoveryPath}`,
         context,
         barrier,
@@ -554,7 +554,7 @@ async function withLock(lockPath, action, {
     if (barrier) {
       if (barrier.canAutoRecover || barrier.needsOperator) {
         throw lockFailure(
-          'LOCK_STALE',
+          "LOCK_STALE",
           `recovery barrier ${recoveryPath} requires explicit operator recovery`,
           context,
           barrier,
@@ -563,7 +563,7 @@ async function withLock(lockPath, action, {
       }
       if (clockMs() >= deadlineMs) {
         throw lockFailure(
-          'LOCK_TIMEOUT',
+          "LOCK_TIMEOUT",
           `timed out waiting for lock recovery ${recoveryPath}`,
           context,
           barrier,
@@ -577,7 +577,7 @@ async function withLock(lockPath, action, {
     try {
       ownedLock = await createOwnedLock(lockPath, { verify, clockMs });
     } catch (error) {
-      if (error.code !== 'EEXIST') throw error;
+      if (error.code !== "EEXIST") throw error;
     }
     if (ownedLock) {
       try {
@@ -599,7 +599,7 @@ async function withLock(lockPath, action, {
 
     if (observed.needsOperator) {
       throw lockFailure(
-        'LOCK_STALE',
+        "LOCK_STALE",
         `lock ${lockPath} requires explicit operator recovery; automatic stale-lock deletion is disabled`,
         context,
         observed,
@@ -608,7 +608,7 @@ async function withLock(lockPath, action, {
 
     if (clockMs() >= deadlineMs) {
       throw lockFailure(
-        'LOCK_TIMEOUT',
+        "LOCK_TIMEOUT",
         `timed out acquiring lock ${lockPath}`,
         context,
         observed,
@@ -637,11 +637,11 @@ export class TrestleStateStore {
     beforeUnlinkRevalidation = null,
     beforeRemove = null,
   }) {
-    this.projectStateRoot = requireAbsoluteRoot('projectStateRoot', projectStateRoot);
-    this.workstreamStateRoot = requireAbsoluteRoot('workstreamStateRoot', workstreamStateRoot);
-    this.configRoot = requireAbsoluteRoot('configRoot', configRoot);
+    this.projectStateRoot = requireAbsoluteRoot("projectStateRoot", projectStateRoot);
+    this.workstreamStateRoot = requireAbsoluteRoot("workstreamStateRoot", workstreamStateRoot);
+    this.configRoot = requireAbsoluteRoot("configRoot", configRoot);
     this.projectRoot = requireAbsoluteRoot(
-      'projectRoot',
+      "projectRoot",
       projectRoot ?? dirname(this.configRoot),
     );
     this.schemas = normalizeSchemas(schemas);
@@ -653,44 +653,44 @@ export class TrestleStateStore {
     this.lockStaleMs = lockStaleMs;
     this.isProcessAlive = isProcessAlive;
     this.lockClock = lockClock;
-    this.workstreamId = typeof workstreamId === 'string' && workstreamId.length > 0 ? workstreamId : null;
-    this.beforeUnlinkRevalidation = typeof beforeUnlinkRevalidation === 'function' ? beforeUnlinkRevalidation : null;
-    this.beforeRemove = typeof beforeRemove === 'function' ? beforeRemove : null;
+    this.workstreamId = typeof workstreamId === "string" && workstreamId.length > 0 ? workstreamId : null;
+    this.beforeUnlinkRevalidation = typeof beforeUnlinkRevalidation === "function" ? beforeUnlinkRevalidation : null;
+    this.beforeRemove = typeof beforeRemove === "function" ? beforeRemove : null;
     this.rootPins = undefined;
     this.rootPinsPromise = undefined;
   }
 
   #root(scope, namespace) {
-    safeSegment(namespace, 'namespace');
-    if (namespace === 'config') return { scopeRoot: this.configRoot, root: this.configRoot, pinName: 'config' };
-    if (scope === 'project') {
+    safeSegment(namespace, "namespace");
+    if (namespace === "config") return { scopeRoot: this.configRoot, root: this.configRoot, pinName: "config" };
+    if (scope === "project") {
       return {
         scopeRoot: this.projectStateRoot,
-        root: resolve(this.projectStateRoot, 'namespaces', namespace),
-        pinName: 'project',
+        root: resolve(this.projectStateRoot, "namespaces", namespace),
+        pinName: "project",
       };
     }
-    if (scope === 'workstream') {
+    if (scope === "workstream") {
       return {
         scopeRoot: this.workstreamStateRoot,
-        root: resolve(this.workstreamStateRoot, 'namespaces', namespace),
-        pinName: 'workstream',
+        root: resolve(this.workstreamStateRoot, "namespaces", namespace),
+        pinName: "workstream",
       };
     }
-    throw new TrestleStateError('scope must be project or workstream', 'INVALID_SCOPE');
+    throw new TrestleStateError("scope must be project or workstream", "INVALID_SCOPE");
   }
 
-  #path({ scope = 'workstream', namespace, key }) {
+  #path({ scope = "workstream", namespace, key }) {
     const { root, scopeRoot, pinName } = this.#root(scope, namespace);
-    const keyParts = namespace === 'config' ? assertConfigArtifactKey(key) : safeKey(key);
-    const path = resolve(root, ...keyParts) + '.json';
+    const keyParts = namespace === "config" ? assertConfigArtifactKey(key) : safeKey(key);
+    const path = resolve(root, ...keyParts) + ".json";
     assertWithin(root, path);
     return { root, scopeRoot, pinName, path };
   }
 
   #lockContext(options) {
     return {
-      scope: options.scope ?? 'workstream',
+      scope: options.scope ?? "workstream",
       namespace: options.namespace,
       key: options.key,
       workstreamId: this.workstreamId,
@@ -733,10 +733,10 @@ export class TrestleStateStore {
         pinDirectory(this.workstreamStateRoot, { create: true }),
         pinDirectory(this.configRoot, { create: true }),
       ]).then(async (results) => {
-        const failure = results.find((result) => result.status === 'rejected');
+        const failure = results.find((result) => result.status === "rejected");
         if (failure) {
           for (const result of results) {
-            if (result.status === 'fulfilled') await releasePin(result.value);
+            if (result.status === "fulfilled") await releasePin(result.value);
           }
           throw failure.reason;
         }
@@ -753,8 +753,8 @@ export class TrestleStateStore {
     try {
       await verifyDescendant(pins[pinName], path);
     } catch (error) {
-      if (error.code === 'PATH_TRAVERSAL') {
-        throw new TrestleStateError(error.message, 'PATH_TRAVERSAL');
+      if (error.code === "PATH_TRAVERSAL") {
+        throw new TrestleStateError(error.message, "PATH_TRAVERSAL");
       }
       throw error;
     }
@@ -766,14 +766,14 @@ export class TrestleStateStore {
     try {
       await this.#verifyPath(pathSpec);
       await assertHandleMatchesPath(handle, pathSpec.path);
-      return await handle.readFile('utf8');
+      return await handle.readFile("utf8");
     } finally {
       await handle.close();
     }
   }
 
   async #writeEnvelope(pathSpec, envelope) {
-    const pending = `${pathSpec.path}.pending-${safeSegment(String(this.idGenerator()), 'generated ID')}`;
+    const pending = `${pathSpec.path}.pending-${safeSegment(String(this.idGenerator()), "generated ID")}`;
     const pendingSpec = { ...pathSpec, path: pending };
     await this.#verifyPath(pendingSpec);
     const handle = await open(
@@ -782,7 +782,7 @@ export class TrestleStateStore {
       0o600,
     );
     try {
-      await handle.writeFile(`${JSON.stringify(envelope, null, 2)}\n`, 'utf8');
+      await handle.writeFile(`${JSON.stringify(envelope, null, 2)}\n`, "utf8");
       await handle.sync();
       await this.#verifyPath(pendingSpec);
       await assertHandleMatchesPath(handle, pending);
@@ -799,44 +799,44 @@ export class TrestleStateStore {
   }
 
   #assertMutable(namespace) {
-    if (namespace === 'config') {
-      throw new TrestleStateError('config is immutable through the state API', 'IMMUTABLE_NAMESPACE');
+    if (namespace === "config") {
+      throw new TrestleStateError("config is immutable through the state API", "IMMUTABLE_NAMESPACE");
     }
     const schema = this.schemas.get(namespace);
     if (!schema) {
-      throw new TrestleStateError(`namespace ${namespace} has no registered schema`, 'SCHEMA_REQUIRED');
+      throw new TrestleStateError(`namespace ${namespace} has no registered schema`, "SCHEMA_REQUIRED");
     }
     return schema;
   }
 
-  async #readEnvelope(options, { missing = 'throw' } = {}) {
+  async #readEnvelope(options, { missing = "throw" } = {}) {
     const pathSpec = this.#path(options);
     let envelope;
     try {
       envelope = JSON.parse(await this.#readFile(pathSpec));
     } catch (error) {
-      if (error.code === 'ENOENT' && missing === 'undefined') return undefined;
-      if (error.code === 'ENOENT') throw new TrestleStateError('state entry not found', 'NOT_FOUND');
-      if (error instanceof SyntaxError) throw new TrestleStateError('state entry is not valid JSON', 'CORRUPT_STATE');
+      if (error.code === "ENOENT" && missing === "undefined") return undefined;
+      if (error.code === "ENOENT") throw new TrestleStateError("state entry not found", "NOT_FOUND");
+      if (error instanceof SyntaxError) throw new TrestleStateError("state entry is not valid JSON", "CORRUPT_STATE");
       throw error;
     }
-    if (options.namespace === 'config' && (!envelope || !Number.isInteger(envelope.trestleStateVersion))) {
+    if (options.namespace === "config" && (!envelope || !Number.isInteger(envelope.trestleStateVersion))) {
       return {
         trestleStateVersion: this.stateVersion,
-        namespace: 'config',
+        namespace: "config",
         value: envelope,
       };
     }
-    if (!envelope || typeof envelope !== 'object' || !Number.isInteger(envelope.trestleStateVersion)) {
-      throw new TrestleStateError('state entry has no valid version metadata', 'CORRUPT_STATE');
+    if (!envelope || typeof envelope !== "object" || !Number.isInteger(envelope.trestleStateVersion)) {
+      throw new TrestleStateError("state entry has no valid version metadata", "CORRUPT_STATE");
     }
     if (envelope.trestleStateVersion > this.stateVersion) {
-      throw new TrestleStateError('state entry was written by a newer version', 'UNSUPPORTED_VERSION');
+      throw new TrestleStateError("state entry was written by a newer version", "UNSUPPORTED_VERSION");
     }
     let migrated = envelope;
     while (migrated.trestleStateVersion < this.stateVersion) {
       const migrate = this.migrations.get(migrated.trestleStateVersion);
-      if (!migrate) throw new TrestleStateError(`no migration from version ${migrated.trestleStateVersion}`, 'MIGRATION_REQUIRED');
+      if (!migrate) throw new TrestleStateError(`no migration from version ${migrated.trestleStateVersion}`, "MIGRATION_REQUIRED");
       const next = await migrate(structuredClone(migrated), {
         fromVersion: migrated.trestleStateVersion,
         toVersion: migrated.trestleStateVersion + 1,
@@ -875,10 +875,10 @@ export class TrestleStateStore {
     const recoveryMode = options.recovery === true;
     const providedToken = options.expectedToken !== undefined
       && options.expectedToken !== null
-      && options.expectedToken !== '';
-    const expectedToken = providedToken ? safeSegment(options.expectedToken, 'expectedToken') : null;
-    const expectedInode = identityInteger(options.expectedInode, 'expectedInode');
-    const expectedDevice = identityInteger(options.expectedDevice, 'expectedDevice');
+      && options.expectedToken !== "";
+    const expectedToken = providedToken ? safeSegment(options.expectedToken, "expectedToken") : null;
+    const expectedInode = identityInteger(options.expectedInode, "expectedInode");
+    const expectedDevice = identityInteger(options.expectedDevice, "expectedDevice");
 
     // Tokenless recovery is a narrow escape hatch for locks that are malformed
     // (e.g. a zero-length file left by a crash between O_CREAT and the identity
@@ -886,8 +886,8 @@ export class TrestleStateStore {
     // instead pin the exact immutable file identity: both inode AND device.
     if (!providedToken && (expectedInode === undefined || expectedDevice === undefined)) {
       throw new TrestleStateError(
-        'tokenless malformed-lock recovery requires both expectedInode and expectedDevice',
-        'UNLOCK_AUTHORIZATION_REQUIRED',
+        "tokenless malformed-lock recovery requires both expectedInode and expectedDevice",
+        "UNLOCK_AUTHORIZATION_REQUIRED",
       );
     }
 
@@ -909,12 +909,12 @@ export class TrestleStateStore {
     try {
       const lock = await inspectLock(targetPath, targetOptions);
       if (!lock) {
-        return { unlocked: false, reason: 'missing', lock: null };
+        return { unlocked: false, reason: "missing", lock: null };
       }
       if (providedToken) {
         if (lock.token !== expectedToken) {
           throw lockFailure(
-            'LOCK_TOKEN_MISMATCH',
+            "LOCK_TOKEN_MISMATCH",
             `lock ${lockPath} no longer matches expected token`,
             context,
             lock,
@@ -925,7 +925,7 @@ export class TrestleStateStore {
         // A well-formed lock carries a token; tokenless recovery must never
         // clear a valid tokened lock (or, by construction, a live one).
         throw lockFailure(
-          'LOCK_TOKEN_REQUIRED',
+          "LOCK_TOKEN_REQUIRED",
           `refusing tokenless unlock of a valid lock at ${lockPath}; supply --expected-token`,
           context,
           lock,
@@ -933,7 +933,7 @@ export class TrestleStateStore {
       }
       if (expectedInode !== undefined && lock.ino !== expectedInode) {
         throw lockFailure(
-          'LOCK_IDENTITY_MISMATCH',
+          "LOCK_IDENTITY_MISMATCH",
           `lock ${lockPath} no longer matches expected inode`,
           context,
           lock,
@@ -942,7 +942,7 @@ export class TrestleStateStore {
       }
       if (expectedDevice !== undefined && lock.dev !== expectedDevice) {
         throw lockFailure(
-          'LOCK_IDENTITY_MISMATCH',
+          "LOCK_IDENTITY_MISMATCH",
           `lock ${lockPath} no longer matches expected device`,
           context,
           lock,
@@ -951,7 +951,7 @@ export class TrestleStateStore {
       }
       if (!lock.canAutoRecover && !lock.needsOperator) {
         throw lockFailure(
-          'LOCK_NOT_STALE',
+          "LOCK_NOT_STALE",
           `refusing to unlock a live or indeterminate lock at ${lockPath}`,
           context,
           lock,
@@ -1005,10 +1005,10 @@ export class TrestleStateStore {
     const lockOptions = this.#lockOptions(context, pathSpec);
     await this.#verifyPath(pathSpec);
     return withLock(lockPath, async () => {
-      const current = await this.#readEnvelope(options, { missing: 'undefined' });
+      const current = await this.#readEnvelope(options, { missing: "undefined" });
       const previous = current?.value ?? [];
       if (!Array.isArray(previous)) {
-        throw new TrestleStateError('append target is not an array', 'NOT_APPENDABLE');
+        throw new TrestleStateError("append target is not an array", "NOT_APPENDABLE");
       }
       const value = [...previous, options.value];
       validateSchema(value, schema);
@@ -1041,17 +1041,17 @@ export class TrestleStateStore {
     }, lockOptions);
   }
 
-  async list({ scope = 'workstream', namespace, prefix = '' }) {
+  async list({ scope = "workstream", namespace, prefix = "" }) {
     const { root, pinName } = this.#root(scope, namespace);
-    if (namespace === 'config' && prefix !== '') {
+    if (namespace === "config" && prefix !== "") {
       throw new TrestleStateError(
-        'config listing does not support nested prefixes',
-        'INVALID_PATH',
+        "config listing does not support nested prefixes",
+        "INVALID_PATH",
       );
     }
-    const prefixParts = namespace === 'config'
-      ? (prefix === '' ? [] : assertConfigArtifactKey(prefix))
-      : (prefix === '' ? [] : safeKey(prefix));
+    const prefixParts = namespace === "config"
+      ? (prefix === "" ? [] : assertConfigArtifactKey(prefix))
+      : (prefix === "" ? [] : safeKey(prefix));
     const start = resolve(root, ...prefixParts);
     assertWithin(root, start);
     await this.#verifyPath({ pinName, path: start });
@@ -1062,28 +1062,28 @@ export class TrestleStateStore {
         await this.#verifyPath({ pinName, path: directory });
         children = await readdir(directory, { withFileTypes: true });
       } catch (error) {
-        if (error.code === 'ENOENT') return;
+        if (error.code === "ENOENT") return;
         throw error;
       }
       for (const child of children.sort((a, b) => a.name.localeCompare(b.name))) {
-        if (child.name.endsWith('.lock') || child.name.endsWith(LOCK_RECOVERY_SUFFIX) || child.name.includes('.pending-')) continue;
+        if (child.name.endsWith(".lock") || child.name.endsWith(LOCK_RECOVERY_SUFFIX) || child.name.includes(".pending-")) continue;
         const childPath = resolve(directory, child.name);
         assertWithin(root, childPath);
         if (child.isSymbolicLink()) {
-          throw new TrestleStateError('state paths may not contain symbolic links', 'PATH_TRAVERSAL');
+          throw new TrestleStateError("state paths may not contain symbolic links", "PATH_TRAVERSAL");
         }
         await this.#verifyPath({ pinName, path: childPath });
         if (child.isDirectory()) {
-          if (namespace === 'config') {
+          if (namespace === "config") {
             throw new TrestleStateError(
-              'config surface contains a nested artifact directory',
-              'CONFIG_ARTIFACT_REJECTED',
+              "config surface contains a nested artifact directory",
+              "CONFIG_ARTIFACT_REJECTED",
             );
           }
           await walk(childPath);
         }
-        else if (child.isFile() && child.name.endsWith('.json')) {
-          entries.push(relative(root, childPath).split(sep).join('/').slice(0, -5));
+        else if (child.isFile() && child.name.endsWith(".json")) {
+          entries.push(relative(root, childPath).split(sep).join("/").slice(0, -5));
         }
       }
     };
@@ -1097,13 +1097,13 @@ export class TrestleStateStore {
     return {
       ok: true,
       stateVersion: this.stateVersion,
-      topology: 'server-per-workstream',
+      topology: "server-per-workstream",
       lockRecovery: {
         timeoutMs: this.lockTimeoutMs,
         staleMs: this.lockStaleMs,
         sameHostDeadPidAutoRecovery: false,
         automaticStaleLockDeletion: false,
-        remoteOrIndeterminateRecovery: 'explicit-unlock-required',
+        remoteOrIndeterminateRecovery: "explicit-unlock-required",
       },
       roots: {
         project: this.projectStateRoot,
@@ -1114,12 +1114,12 @@ export class TrestleStateStore {
     };
   }
 
-  async decide({ scope = 'workstream', decisionId, decision }) {
-    safeSegment(decisionId, 'decisionId');
-    if (!this.schemas.has('decisions')) {
-      throw new TrestleStateError('decisions namespace requires a registered schema', 'SCHEMA_REQUIRED');
+  async decide({ scope = "workstream", decisionId, decision }) {
+    safeSegment(decisionId, "decisionId");
+    if (!this.schemas.has("decisions")) {
+      throw new TrestleStateError("decisions namespace requires a registered schema", "SCHEMA_REQUIRED");
     }
-    return this.write({ scope, namespace: 'decisions', key: decisionId, value: decision });
+    return this.write({ scope, namespace: "decisions", key: decisionId, value: decision });
   }
 }
 

@@ -116,6 +116,14 @@ export function createProcessAdapter({ spawnImpl = spawn } = {}) {
         }
 
         const { readOnly: _readOnly, ...spawnOptions } = command.options ?? {};
+        // The scrubbed reviewer environment is frozen so it cannot be widened
+        // after construction, but Node injects NODE_V8_COVERAGE into a child's
+        // env object at spawn time when the parent runs under coverage, which
+        // throws on a frozen object and fails every review. Hand spawn a
+        // mutable shallow copy: the allowlist still decides what is in it, and
+        // the only thing the runtime may add is the coverage profile path,
+        // which cannot load code the way NODE_OPTIONS could.
+        if (spawnOptions.env) spawnOptions.env = { ...spawnOptions.env };
         const useProcessGroupKill = SUPPORTS_PROCESS_GROUP_KILL;
         let child;
         let supervision;

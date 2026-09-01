@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 
 # Least privilege by default, matching the project's security posture.
+# Actions are pinned to a commit SHA rather than a mutable tag so a retagged
+# upstream release cannot silently change what runs here. Dependabot proposes
+# SHA bumps on the weekly github-actions schedule.
 permissions:
   contents: read
 
@@ -20,8 +23,8 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
       - run: npm run lint
@@ -37,8 +40,8 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         node: ['20', '22']
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ matrix.node }}
       - name: Report toolchain
@@ -52,8 +55,8 @@ jobs:
     name: Package
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
       - name: Verify publishable contents
@@ -63,12 +66,20 @@ jobs:
     name: Coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version-file: .nvmrc
-      # Thresholds run on the .nvmrc runtime only: the built-in coverage
-      # threshold flags require Node 22, while the suite itself still has to
-      # pass on the supported Node 20 floor.
+      # The coverage gate parses lcov in scripts/coverage.mjs rather than using
+      # Node's --test-coverage-* flags, which only exist from v22.8. That keeps
+      # the floor enforceable on the supported Node 20 runtime instead of only
+      # on the newest one.
       - name: Enforce coverage thresholds
         run: npm run test:coverage
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: coverage-lcov
+          path: coverage/lcov.info
+          if-no-files-found: warn

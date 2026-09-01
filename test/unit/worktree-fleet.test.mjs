@@ -5,6 +5,7 @@ import { PassThrough } from "node:stream";
 import { EventEmitter } from "node:events";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import {
   createGitProcessAdapter,
   createWorktreeFleet,
@@ -13,7 +14,8 @@ import {
 } from "../../src/worktrees/index.mjs";
 import { PathSecurityError } from "../../src/security/path-security.mjs";
 
-const processTreeRoot = path.resolve("test/.work/git-adapter-process-tree");
+const scratchRoot = await makeScratchRoot("worktree-fleet");
+const processTreeRoot = path.join(scratchRoot, "git-adapter-process-tree");
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -56,8 +58,8 @@ test("fleet uses explicit repo root and safe worktree path", async () => {
       if (call.args[0] === "worktree") await mkdir(call.args.at(-2), { recursive: true });
     },
   };
-  const repoRoot = path.resolve("test/.work/unit-fleet-repo");
-  const worktreeRoot = path.resolve("test/.work/unit-fleet-root");
+  const repoRoot = path.join(scratchRoot, "unit-fleet-repo");
+  const worktreeRoot = path.join(scratchRoot, "unit-fleet-root");
   await mkdir(repoRoot, { recursive: true });
   const fleet = createWorktreeFleet({ repoRoot, worktreeRoot, git });
   const worktree = await fleet.create({ id: "../../escape", startPoint: "main" });
@@ -69,10 +71,10 @@ test("fleet uses explicit repo root and safe worktree path", async () => {
 
 test("failed worktrees and branches are retained", async () => {
   const calls = [];
-  await mkdir(path.resolve("test/.work/unit-fleet-repo"), { recursive: true });
+  await mkdir(path.join(scratchRoot, "unit-fleet-repo"), { recursive: true });
   const fleet = createWorktreeFleet({
-    repoRoot: path.resolve("test/.work/unit-fleet-repo"),
-    worktreeRoot: path.resolve("test/.work/unit-fleet-root"),
+    repoRoot: path.join(scratchRoot, "unit-fleet-repo"),
+    worktreeRoot: path.join(scratchRoot, "unit-fleet-root"),
     git: {
       run: async (call) => {
         calls.push(call);
@@ -112,7 +114,7 @@ test("fleet rejects option-like start refs", async () => {
 });
 
 test("fleet pins roots and rejects replacement or symlinked remove candidates before Git", async () => {
-  const root = path.resolve("test/.work/fleet-pins");
+  const root = path.join(scratchRoot, "fleet-pins");
   const repoRoot = path.join(root, "repo");
   const worktreeRoot = path.join(root, "fleet");
   const outside = path.join(root, "outside");
@@ -184,7 +186,7 @@ function racingWritableRoot(worktreeRoot) {
 }
 
 test("create fails closed with no git or outside-path side effect when the fleet root cannot be held", async () => {
-  const base = path.resolve("test/.work/fleet-race-create");
+  const base = path.join(scratchRoot, "fleet-race-create");
   const repoRoot = path.join(base, "repo");
   const worktreeRoot = path.join(base, "fleet");
   const attackerTarget = path.join(base, "attacker");
@@ -222,7 +224,7 @@ test("create fails closed with no git or outside-path side effect when the fleet
 });
 
 test("create fails closed when the platform cannot prove secure ownership", async () => {
-  const base = path.resolve("test/.work/fleet-race-unsupported");
+  const base = path.join(scratchRoot, "fleet-race-unsupported");
   const repoRoot = path.join(base, "repo");
   const worktreeRoot = path.join(base, "fleet");
   await rm(base, { recursive: true, force: true });
@@ -245,7 +247,7 @@ test("create fails closed when the platform cannot prove secure ownership", asyn
 });
 
 test("remove fails closed with no git side effect when the fleet root cannot be held", async () => {
-  const base = path.resolve("test/.work/fleet-race-remove");
+  const base = path.join(scratchRoot, "fleet-race-remove");
   const repoRoot = path.join(base, "repo");
   const worktreeRoot = path.join(base, "fleet");
   const worktreePath = path.join(worktreeRoot, "trestle-task-abc0123456");
@@ -268,7 +270,7 @@ test("remove fails closed with no git side effect when the fleet root cannot be 
 });
 
 test("create invokes git once with an in-root worktree path when the root is securely held", async () => {
-  const base = path.resolve("test/.work/fleet-race-secure");
+  const base = path.join(scratchRoot, "fleet-race-secure");
   const repoRoot = path.join(base, "repo");
   const worktreeRoot = path.join(base, "fleet");
   await rm(base, { recursive: true, force: true });

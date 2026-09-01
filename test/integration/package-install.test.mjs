@@ -3,9 +3,10 @@ import { mkdir, readdir, readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 
 const packageRoot = path.resolve(".");
-const fixtureRoot = path.resolve("test/.work/package-install");
+const fixtureRoot = await makeScratchRoot("package-install");
 const packRoot = path.join(fixtureRoot, "pack");
 const installRoot = path.join(fixtureRoot, "consumer");
 
@@ -60,7 +61,13 @@ test("npm pack installs a clean CLI with public exports and bundled templates", 
     "-e",
     "import('agent-trestle').then(m => console.log(Object.keys(m).sort().join(',')))",
   ], { cwd: installRoot });
-  assert.match(exportsOutput, /audit,config,copilot,dashboard,dispatch,ownership,review,scheduler,state,worktrees/);
+  assert.equal(
+    exportsOutput.trim(),
+    [
+      "audit", "config", "copilot", "dashboard", "dispatch", "manifest",
+      "ownership", "review", "run", "scheduler", "state", "worktrees",
+    ].join(","),
+  );
 
   run(bin, ["init", "--json"], { cwd: installRoot });
   const config = JSON.parse(await readFile(path.join(installRoot, ".trestle", "config.json"), "utf8"));

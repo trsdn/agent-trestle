@@ -11,8 +11,9 @@ Participation is governed by the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Reporting security issues
 
-**Do not open a public issue for a vulnerability.** Follow the private process
-in [SECURITY.md](SECURITY.md).
+**Do not open a public issue for a vulnerability.** Follow the reporting
+process in [SECURITY.md](SECURITY.md), which links to the repository's private
+GitHub advisory intake.
 
 ## Development setup
 
@@ -33,24 +34,66 @@ There is no install step for dependencies, because there are none.
 
 | Command | What it does |
 | --- | --- |
-| `npm run lint` | Dependency-free syntax, JSON, and whitespace checks |
-| `npm run lint:fix` | Auto-repairs whitespace problems |
+| `npm run lint` | Dependency-free syntax, JSON, whitespace, and quote-style checks |
+| `npm run lint:fix` | Auto-repairs whitespace and quote-style problems |
 | `npm test` | Full suite via the Node built-in test runner |
 | `npm run test:unit` | Unit tests only |
 | `npm run test:integration` | Integration tests only |
-| `npm run test:coverage` | Full suite plus coverage thresholds (needs Node 22) |
+| `npm run test:coverage` | Full suite plus the `src/` coverage floors |
 | `npm run check` | Lint + tests + packaging verification |
 
 Run `npm run check` before pushing. CI runs the same commands on Node 20 and 22
 across Linux and macOS, and enforces coverage thresholds in a separate
 `Coverage` job on the `.nvmrc` runtime.
 
+## Continuous integration and action pinning
+
+Every GitHub Actions step **must be pinned to a full commit SHA**, never to a
+mutable tag or branch:
+
+```yaml
+- uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+```
+
+Keep the human-readable version as a trailing comment so the intent stays
+obvious and Dependabot can track it. A tag can be moved by its owner, so a
+tag reference means an upstream retag silently changes what executes inside a
+workflow that has access to this repository. That is a supply-chain risk this
+project does not accept, and it is the same fail-closed reasoning applied
+everywhere else in the codebase.
+
+Resolve a SHA before adding an action:
+
+```bash
+gh api repos/OWNER/REPO/git/ref/tags/vN -q '.object.sha'
+```
+
+If the tag is annotated, dereference it with
+`gh api repos/OWNER/REPO/git/tags/<sha> -q '.object.sha'` to get the commit.
+
+Workflows must also declare least-privilege `permissions:`. Grant write scopes
+on the individual job that needs them, never at workflow level — see
+[`.github/workflows/codeql.yml`](.github/workflows/codeql.yml), which scopes
+`security-events: write` to its analysis job only.
+
+Dependency and code scanning are automated:
+[`.github/dependabot.yml`](.github/dependabot.yml) tracks the npm and
+github-actions ecosystems weekly, and
+[`.github/workflows/codeql.yml`](.github/workflows/codeql.yml) runs CodeQL on
+pushes to `main`, on pull requests, and weekly.
+
 ## The zero-dependency rule
 
 Agent Trestle ships with **no npm runtime or development dependencies**, and
 this is a deliberate constraint tied to its provenance posture, not an
 accident. That is why linting is a small script built on Node built-ins
-([`scripts/lint.mjs`](scripts/lint.mjs)) rather than ESLint and Prettier.
+([`scripts/lint.mjs`](scripts/lint.mjs)) rather than ESLint and Prettier, and
+why coverage is measured by [`scripts/coverage.mjs`](scripts/coverage.mjs)
+wrapping Node's own `--experimental-test-coverage` rather than by `c8` or `nyc`.
+
+This applies to `dependencies`, `devDependencies` and `optionalDependencies`
+alike: `package.json` declares none of them, and the Dependabot npm entry exists
+only so that anything introduced later is tracked from the moment it lands.
 
 A pull request that adds a dependency needs to justify why a Node built-in
 cannot do the job, and must update

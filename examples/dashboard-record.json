@@ -1,0 +1,97 @@
+{
+  "projects": [
+    {
+      "id": "example-project",
+      "kind": "project",
+      "name": "example-project"
+    }
+  ],
+  "workstreams": [
+    {
+      "id": "main",
+      "kind": "workstream",
+      "name": "main",
+      "project": "example-project"
+    }
+  ],
+  "runs": [
+    {
+      "id": "nightly-hardening",
+      "kind": "run",
+      "name": "nightly-hardening",
+      "status": "completed",
+      "startedAt": "2026-08-20T21:26:22.612Z",
+      "finishedAt": "2026-08-20T21:26:22.931Z",
+      "concurrency": 1,
+      "taskCount": 2
+    }
+  ],
+  "tasks": [
+    {
+      "id": "nightly-hardening/design",
+      "kind": "task",
+      "name": "design",
+      "runId": "nightly-hardening",
+      "status": "completed",
+      "startedAt": "2026-08-20T21:26:22.623Z",
+      "finishedAt": "2026-08-20T21:26:22.881Z",
+      "dispatches": 1,
+      "project": "example-project",
+      "workstream": "main",
+      "role": "builder",
+      "agent": "example-builder",
+      "exitCode": 0,
+      "message": "succeeded"
+    },
+    {
+      "id": "nightly-hardening/implement",
+      "kind": "task",
+      "name": "implement",
+      "runId": "nightly-hardening",
+      "status": "completed",
+      "startedAt": "2026-08-20T21:26:22.891Z",
+      "finishedAt": "2026-08-20T21:26:22.924Z",
+      "dispatches": 1,
+      "project": "example-project",
+      "workstream": "main",
+      "role": "builder",
+      "agent": "example-builder",
+      "exitCode": 0,
+      "message": "succeeded"
+    }
+  ],
+  "reviews": [],
+  "audit": [
+    {
+      "id": "nightly-hardening/design",
+      "kind": "audit",
+      "name": "nightly-hardening/design",
+      "status": "verified",
+      "segments": 1,
+      "records": 2,
+      "reconciliationHash": "fa3b63df926a3492af291b4a9f59a579b384cfc79dcbe91f32264d7c93013b5d"
+    },
+    {
+      "id": "nightly-hardening/implement",
+      "kind": "audit",
+      "name": "nightly-hardening/implement",
+      "status": "verified",
+      "segments": 1,
+      "records": 2,
+      "reconciliationHash": "37cb47ffa85184a3871dd6182deb7b95036e28fc5aca106589fc133dfab14c2b"
+    },
+    {
+      "id": "nightly-hardening/run",
+      "kind": "audit",
+      "name": "nightly-hardening/run",
+      "status": "verified",
+      "segments": 1,
+      "records": 2,
+      "reconciliationHash": "6a1e6dc2f7255fac50de64fe7be5457615cacdb6d3b7be72bd45cbb6b76529db"
+    }
+  ],
+  "failures": [],
+  "git": {},
+  "guidance": [],
+  "generatedAt": "2026-08-20T21:26:22.947Z"
+}

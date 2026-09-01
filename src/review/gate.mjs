@@ -75,6 +75,7 @@ export async function runReviewGate({
   permissions,
   ownershipPolicy,
   actor,
+  governancePaths = [],
 } = {}) {
   if (typeof repoRoot !== "string" || !path.isAbsolute(repoRoot)) {
     throw new TypeError("repoRoot must be an absolute path");
@@ -210,6 +211,22 @@ export async function runReviewGate({
           return closed(
             "changed-paths-unavailable",
             new Error("automatic merge requires exact merged-tree changed paths"),
+            reviews,
+          );
+        }
+        // A merge must never be able to install its own authorization. When the
+        // ownership policy or project config lives inside the repository, the
+        // branch under review can rewrite the very documents that decide whether
+        // it may merge, so a diff touching them is refused outright.
+        const selfAuthorizing = reviewedDiff.changedPaths
+          .filter((changed) => governancePaths.includes(changed));
+        if (selfAuthorizing.length > 0) {
+          return closed(
+            "governance-self-modification",
+            new Error(
+              "refusing to merge a change that modifies its own merge authority: "
+              + `${selfAuthorizing.join(", ")}`,
+            ),
             reviews,
           );
         }

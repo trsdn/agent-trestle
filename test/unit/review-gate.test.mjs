@@ -181,6 +181,53 @@ test("review command is shell-free and explicitly read-only", () => {
   assert.equal(command.options.env.COPILOT_HOME, reviewerHome);
 });
 
+test("a failed rollback after a mid-CAS checkout surfaces as MERGE_ROLLBACK_FAILED", async () => {
+  // The target stays unchecked out for the fail-fast and pre-CAS probes, then
+  // appears checked out on the post-CAS confirmation, forcing the rollback. The
+  // rollback update-ref then fails, which must never be swallowed: the ref is
+  // left at the merge commit and the operator has to be told.
+  const base = createGitRunner();
+  let worktreeCalls = 0;
+  let updateRefCalls = 0;
+  const git = createReviewGitAdapter({
+    runner: async (call) => {
+      if (call.args[0] === "worktree") {
+        worktreeCalls += 1;
+        return worktreeCalls >= 3
+          ? { code: 0, stdout: worktreeList("refs/heads/main", mergeCommitOid, root) }
+          : { code: 0, stdout: worktreeList() };
+      }
+      if (call.args[0] === "update-ref") {
+        updateRefCalls += 1;
+        if (updateRefCalls === 2) {
+          return { code: 1, stdout: "", stderr: "cannot lock ref refs/heads/main" };
+        }
+      }
+      return base(call);
+    },
+  });
+
+  await git.diff({ repoRoot: root, baseRef: "main", headRef: "task" });
+  await assert.rejects(
+    git.merge({
+      repoRoot: root,
+      baseRef: "main",
+      reviewedBaseOid: baseOid,
+      reviewedHeadOid: headOid,
+      expectedDiffHash: createHash("sha256").update("diff").digest("hex"),
+    }),
+    (error) => {
+      assert.equal(error.code, "MERGE_ROLLBACK_FAILED");
+      assert.equal(error.mergeCommitOid, mergeCommitOid);
+      assert.match(error.message, /rollback to .* failed/);
+      // The underlying checkout race is preserved rather than replaced.
+      assert.equal(error.cause?.code, "CHECKED_OUT_TARGET");
+      return true;
+    },
+  );
+  assert.equal(updateRefCalls, 2, "rollback must be attempted exactly once");
+});
+
 test("review git adapter constructs exact read-only diff and atomic merge ref update", async () => {
   const calls = [];
   const git = createReviewGitAdapter({
@@ -416,6 +463,32 @@ test("automatic merge fails closed without explicit permission or ownership", as
     actor: "builder",
   });
   assert.equal(rejected.reason, "ownership-rejected");
+  assert.equal(fixture.merges.length, 0);
+});
+
+test("a diff touching its own merge authority is refused even when ownership allows it", async () => {
+  // Identical to the passing-merge case above except for governancePaths, so a
+  // block here can only be the self-authorization guard.
+  const fixture = adapters({ diffs: ["same", "same"] });
+  const refused = await runReviewGate({
+    repoRoot: root,
+    baseRef: "main",
+    headRef: "task",
+    producer: "builder",
+    reviewer: "code-review",
+    git: fixture.git,
+    process: fixture.process,
+    nonceProvider: () => nonce,
+    merge: true,
+    permissions: { autoMerge: true },
+    ownershipPolicy: createOwnershipPolicy({ owners: { builder: ["changed.txt"] } }),
+    actor: "builder",
+    governancePaths: ["changed.txt"],
+  });
+
+  assert.equal(refused.status, "blocked");
+  assert.equal(refused.reason, "governance-self-modification");
+  assert.match(refused.error?.message ?? "", /merge authority/);
   assert.equal(fixture.merges.length, 0);
 });
 

@@ -1,8 +1,8 @@
-import { createHash, randomBytes } from 'node:crypto';
-import { constants } from 'node:fs';
-import { link, lstat, mkdir, readdir } from 'node:fs/promises';
-import { hostname } from 'node:os';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { createHash, randomBytes } from "node:crypto";
+import { constants } from "node:fs";
+import { link, lstat, mkdir, readdir } from "node:fs/promises";
+import { hostname } from "node:os";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import {
   assertFileHandleMatchesPath,
   openVerifiedFile,
@@ -12,9 +12,9 @@ import {
   removeVerifiedFile,
   verifyDescendant,
   verifyPinnedDirectory,
-} from '../security/path-security.mjs';
+} from "../security/path-security.mjs";
 
-const GENESIS_HASH = '0'.repeat(64);
+const GENESIS_HASH = "0".repeat(64);
 const HOST = hostname();
 const DEFAULT_LOCK_TIMEOUT_MS = 5_000;
 const DEFAULT_LOCK_STALE_MS = 30_000;
@@ -22,30 +22,30 @@ const DEFAULT_LOCK_STALE_MS = 30_000;
 export class AuditIntegrityError extends Error {
   constructor(message, details = undefined) {
     super(message);
-    this.name = 'AuditIntegrityError';
-    this.code = 'AUDIT_INTEGRITY';
+    this.name = "AuditIntegrityError";
+    this.code = "AUDIT_INTEGRITY";
     this.details = details;
   }
 }
 
 function safeId(value, name) {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
+  if (typeof value !== "string" || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(value)) {
     throw new TypeError(`${name} contains invalid characters`);
   }
   return value;
 }
 
 function canonicalize(value) {
-  if (Array.isArray(value)) return `[${value.map(canonicalize).join(',')}]`;
-  if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(',')}}`;
+  if (Array.isArray(value)) return `[${value.map(canonicalize).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalize(value[key])}`).join(",")}}`;
   }
   return JSON.stringify(value);
 }
 
 export function hashAuditRecord(record) {
   const { hash: ignored, ...hashable } = record;
-  return createHash('sha256').update(canonicalize(hashable)).digest('hex');
+  return createHash("sha256").update(canonicalize(hashable)).digest("hex");
 }
 
 function verifyRecords(records, path, expected = {}) {
@@ -63,7 +63,7 @@ function verifyRecords(records, path, expected = {}) {
     if (record.priorHash !== priorHash) {
       throw new AuditIntegrityError(`broken prior hash at record ${sequence}`, { path });
     }
-    for (const field of ['runId', 'taskId', 'writerId']) {
+    for (const field of ["runId", "taskId", "writerId"]) {
       if (identity[field] !== undefined && record[field] !== identity[field]) {
         throw new AuditIntegrityError(`${field} changed within segment`, { path, sequence });
       }
@@ -83,18 +83,18 @@ function defaultProcessAlive(pid) {
     process.kill(pid, 0);
     return true;
   } catch (error) {
-    return error.code === 'EPERM';
+    return error.code === "EPERM";
   }
 }
 
 async function readLockInfo(rootPin, path, securityOptions) {
   try {
     const info = JSON.parse(await readVerifiedFile(rootPin, path, securityOptions));
-    if (info && typeof info === 'object' && typeof info.token === 'string') return info;
+    if (info && typeof info === "object" && typeof info.token === "string") return info;
     return { malformed: true, token: null };
   } catch (error) {
-    if (error.code === 'ENOENT') return null;
-    if (error.code === 'PATH_TRAVERSAL') {
+    if (error.code === "ENOENT") return null;
+    if (error.code === "PATH_TRAVERSAL") {
       // A competing holder may unlink its lock after this reader opened its
       // verified descriptor but before the pathname identity recheck. That is
       // an ordinary release, not a containment breach; retry acquisition. A
@@ -103,7 +103,7 @@ async function readLockInfo(rootPin, path, securityOptions) {
         if ((await lstat(path)).isSymbolicLink()) throw error;
         return null;
       } catch (lstatError) {
-        if (lstatError.code === 'ENOENT') return null;
+        if (lstatError.code === "ENOENT") return null;
         throw lstatError;
       }
     }
@@ -114,7 +114,7 @@ async function readLockInfo(rootPin, path, securityOptions) {
 function lockIsStale(info, { now, staleMs, isProcessAlive }) {
   if (!info) return false;
   if (info.malformed) return true;
-  const age = now - (typeof info.epoch === 'number' ? info.epoch : 0);
+  const age = now - (typeof info.epoch === "number" ? info.epoch : 0);
   if (info.host === HOST && !isProcessAlive(info.pid)) return true;
   return age > staleMs;
 }
@@ -137,7 +137,7 @@ async function writeLockIdentity(rootPin, path, handle, token, clock) {
 // lock path. link() cannot overwrite a destination, so contenders never observe
 // a partial lock identity and only one can publish a lock.
 async function createLock(rootPin, lockPath, token, clock, securityOptions) {
-  const pendingPath = `${lockPath}.pending-${randomBytes(16).toString('hex')}`;
+  const pendingPath = `${lockPath}.pending-${randomBytes(16).toString("hex")}`;
   const { handle, identity } = await openVerifiedFile(rootPin, pendingPath, {
     ...securityOptions,
     flags: constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
@@ -151,7 +151,7 @@ async function createLock(rootPin, lockPath, token, clock, securityOptions) {
     try {
       await link(pendingPath, lockPath);
     } catch (error) {
-      if (error.code === 'EEXIST') return null;
+      if (error.code === "EEXIST") return null;
       throw error;
     }
     await verifyDescendant(rootPin, lockPath, { allowMissing: false });
@@ -171,12 +171,12 @@ async function createOwnedSegment(rootPin, makeCandidate, clock, securityOptions
   let lastError;
   for (let attempt = 0; attempt < 1_000; attempt += 1) {
     const candidate = await makeCandidate();
-    const token = randomBytes(16).toString('hex');
+    const token = randomBytes(16).toString("hex");
     const lock = await createLock(rootPin, candidate.lockPath, token, clock, securityOptions);
     if (lock) return { ...candidate, ...lock, token };
     lastError = new Error(`audit lock collision at ${candidate.lockPath}`);
   }
-  throw lastError ?? new Error('unable to allocate a fresh audit segment');
+  throw lastError ?? new Error("unable to allocate a fresh audit segment");
 }
 
 // On a stale home lock, writers never rename or remove it. They route around it
@@ -194,7 +194,7 @@ async function acquireSegment(rootPin, home, {
   await verifyDescendant(rootPin, dirname(home.lockPath), { allowMissing: false });
   const started = clock();
   for (;;) {
-    const token = randomBytes(16).toString('hex');
+    const token = randomBytes(16).toString("hex");
     const lock = await createLock(rootPin, home.lockPath, token, clock, securityOptions);
     if (lock) return { ...home, ...lock, token, rolledOver: false };
 
@@ -225,7 +225,7 @@ async function readRecords(rootPin, path, securityOptions) {
   try {
     const text = await readVerifiedFile(rootPin, path, securityOptions);
     if (!text.trim()) return [];
-    return text.trimEnd().split('\n').map((line, index) => {
+    return text.trimEnd().split("\n").map((line, index) => {
       try {
         return JSON.parse(line);
       } catch {
@@ -233,13 +233,13 @@ async function readRecords(rootPin, path, securityOptions) {
       }
     });
   } catch (error) {
-    if (error.code === 'ENOENT') return [];
+    if (error.code === "ENOENT") return [];
     throw error;
   }
 }
 
 function assertAbsoluteRoot(root) {
-  if (typeof root !== 'string' || !isAbsolute(root)) throw new TypeError('auditRoot must be an explicit absolute path');
+  if (typeof root !== "string" || !isAbsolute(root)) throw new TypeError("auditRoot must be an explicit absolute path");
   return resolve(root);
 }
 
@@ -259,16 +259,16 @@ export class AuditSegmentWriter {
     beforeUse,
   }) {
     this.auditRoot = assertAbsoluteRoot(auditRoot);
-    this.runId = safeId(runId, 'runId');
-    this.taskId = safeId(taskId, 'taskId');
-    this.writerId = safeId(writerId, 'writerId');
+    this.runId = safeId(runId, "runId");
+    this.taskId = safeId(taskId, "taskId");
+    this.writerId = safeId(writerId, "writerId");
     this.clock = clock;
     this.idGenerator = idGenerator;
-    this.segmentId = safeId(String(this.idGenerator()), 'segmentId');
-    this.segmentDirectory = resolve(this.auditRoot, 'runs', this.runId, 'tasks', this.taskId, 'segments');
+    this.segmentId = safeId(String(this.idGenerator()), "segmentId");
+    this.segmentDirectory = resolve(this.auditRoot, "runs", this.runId, "tasks", this.taskId, "segments");
     this.segmentPath = resolve(this.segmentDirectory, `${this.writerId}--${this.segmentId}.ndjson`);
     const rel = relative(this.auditRoot, this.segmentPath);
-    if (rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new TypeError('audit path escapes root');
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new TypeError("audit path escapes root");
     this.lockPath = `${this.segmentPath}.lock`;
     this.lockOptions = {
       timeoutMs: lockTimeoutMs,
@@ -296,7 +296,7 @@ export class AuditSegmentWriter {
   }
 
   async _freshCandidate() {
-    const segmentId = safeId(`roll-${randomBytes(12).toString('hex')}`, 'segmentId');
+    const segmentId = safeId(`roll-${randomBytes(12).toString("hex")}`, "segmentId");
     const segmentPath = resolve(this.segmentDirectory, `${this.writerId}--${segmentId}.ndjson`);
     const lockPath = `${segmentPath}.lock`;
     await verifyDescendant(this._rootPin, segmentPath, { allowMissing: true });
@@ -318,12 +318,12 @@ export class AuditSegmentWriter {
   }
 
   async append(event) {
-    if (event === undefined) throw new TypeError('event is required');
+    if (event === undefined) throw new TypeError("event is required");
     let eventSnapshot;
     try {
       eventSnapshot = JSON.parse(JSON.stringify(event));
     } catch {
-      throw new TypeError('event must be JSON-serializable');
+      throw new TypeError("event must be JSON-serializable");
     }
     return this._serialized(async () => {
       await this._resolveSafePaths();
@@ -333,7 +333,7 @@ export class AuditSegmentWriter {
         {
           ...this.lockOptions,
           makeCandidate: () => this._freshCandidate(),
-          securityOptions: this._fileSecurityOptions('lock'),
+          securityOptions: this._fileSecurityOptions("lock"),
         },
       );
       if (acquired.rolledOver) {
@@ -345,7 +345,7 @@ export class AuditSegmentWriter {
         const records = await readRecords(
           this._rootPin,
           acquired.segmentPath,
-          this._fileSecurityOptions('segment-read'),
+          this._fileSecurityOptions("segment-read"),
         );
         verifyRecords(records, acquired.segmentPath, {
           runId: this.runId,
@@ -364,7 +364,7 @@ export class AuditSegmentWriter {
         };
         record.hash = hashAuditRecord(record);
         const { handle } = await openVerifiedFile(this._rootPin, acquired.segmentPath, {
-          ...this._fileSecurityOptions('segment-append'),
+          ...this._fileSecurityOptions("segment-append"),
           flags: constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT,
           mode: 0o600,
           allowMissing: true,
@@ -382,7 +382,7 @@ export class AuditSegmentWriter {
           acquired.handle,
           acquired.identity,
           acquired.token,
-          this._fileSecurityOptions('lock'),
+          this._fileSecurityOptions("lock"),
         );
       }
     });
@@ -396,7 +396,7 @@ export class AuditSegmentWriter {
       writerId: this.writerId,
     }, {
       rootPin: this._rootPin,
-      securityOptions: this._fileSecurityOptions('segment-read'),
+      securityOptions: this._fileSecurityOptions("segment-read"),
     });
   }
 }
@@ -420,17 +420,17 @@ export async function verifyAuditSegment(path, expected = {}, {
 
 export async function reconcileAuditTask({ auditRoot, runId, taskId }) {
   const root = assertAbsoluteRoot(auditRoot);
-  safeId(runId, 'runId');
-  safeId(taskId, 'taskId');
+  safeId(runId, "runId");
+  safeId(taskId, "taskId");
   const rootPin = await pinDirectory(root, { create: true });
   try {
-    const directory = resolve(rootPin.path, 'runs', runId, 'tasks', taskId, 'segments');
+    const directory = resolve(rootPin.path, "runs", runId, "tasks", taskId, "segments");
     await verifyDescendant(rootPin, directory, { allowMissing: true });
     let names;
     try {
-      names = (await readdir(directory)).filter((name) => name.endsWith('.ndjson')).sort();
+      names = (await readdir(directory)).filter((name) => name.endsWith(".ndjson")).sort();
     } catch (error) {
-      if (error.code === 'ENOENT') return { records: [], segments: [], reconciliationHash: createHash('sha256').update('').digest('hex') };
+      if (error.code === "ENOENT") return { records: [], segments: [], reconciliationHash: createHash("sha256").update("").digest("hex") };
       throw error;
     }
     const segments = [];
@@ -447,7 +447,7 @@ export async function reconcileAuditTask({ auditRoot, runId, taskId }) {
       || left.writerId.localeCompare(right.writerId)
       || left.sequence - right.sequence
       || left.hash.localeCompare(right.hash));
-    const reconciliationHash = createHash('sha256').update(records.map((record) => record.hash).join('\n')).digest('hex');
+    const reconciliationHash = createHash("sha256").update(records.map((record) => record.hash).join("\n")).digest("hex");
     return { records, segments, reconciliationHash };
   } finally {
     await releasePin(rootPin);

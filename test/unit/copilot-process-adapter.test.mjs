@@ -2,14 +2,16 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { makeScratchRoot } from "../helpers/scratch.mjs";
 import {
   inspectModelLog,
   runCopilot,
   spawnProcess,
 } from "../../src/copilot/process-adapter.mjs";
 
-const fixtureRoot = path.resolve("test/.work/fake-copilot");
-const processTreeRoot = path.resolve("test/.work/copilot-process-tree");
+const scratchRoot = await makeScratchRoot("copilot-process-adapter");
+const fixtureRoot = path.join(scratchRoot, "fake-copilot");
+const processTreeRoot = path.join(scratchRoot, "copilot-process-tree");
 
 async function fakeCopilot(mode, { modelLog } = {}) {
   await mkdir(fixtureRoot, { recursive: true });
