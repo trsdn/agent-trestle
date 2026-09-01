@@ -3,8 +3,8 @@ import { lstat, mkdir, open, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 export class PathSecurityError extends Error {
-  constructor(message, code = "PATH_TRAVERSAL") {
-    super(message);
+  constructor(message, code = "PATH_TRAVERSAL", options = undefined) {
+    super(message, options);
     this.name = "PathSecurityError";
     this.code = code;
   }
@@ -52,12 +52,16 @@ function isDeletePending(resolved) {
  */
 const WINDOWS_VANISHED_CODES = new Set(["EPERM", "EBADF", "EBUSY"]);
 
-function isMissingDuringResolve(error, { platform = process.platform } = {}) {
+export function isMissingDuringResolve(error, { platform = process.platform } = {}) {
+  if (error instanceof PathSecurityError && error.cause) {
+    return isMissingDuringResolve(error.cause, { platform });
+  }
   return error.code === "ENOENT"
     || (platform === "win32" && WINDOWS_VANISHED_CODES.has(error.code));
 }
 
-async function assertNoSymlinkComponents(target, { allowMissing = false } = {}) {  const absolute = path.resolve(target);
+async function assertNoSymlinkComponents(target, { allowMissing = false } = {}) {
+  const absolute = path.resolve(target);
   const parsed = path.parse(absolute);
   let current = parsed.root;
   for (const part of absolute.slice(parsed.root.length).split(path.sep).filter(Boolean)) {
@@ -66,7 +70,12 @@ async function assertNoSymlinkComponents(target, { allowMissing = false } = {}) 
     try {
       info = await lstat(current);
     } catch (error) {
-      if (error.code === "ENOENT" && allowMissing) return;
+      if (isMissingDuringResolve(error)) {
+        if (allowMissing) return;
+        if (error.code !== "ENOENT") {
+          throw new PathSecurityError(`Path changed while it was being verified: ${target}`);
+        }
+      }
       throw error;
     }
     if (info.isSymbolicLink()) {
@@ -461,6 +470,14 @@ export async function openSymlinkSafe(target, flags, mode, {
       if (!retryable) throw error;
       lastError = error;
     }
+  }
+  if (lastError instanceof PathSecurityError) throw lastError;
+  if (WINDOWS_VANISHED_CODES.has(lastError?.code)) {
+    throw new PathSecurityError(
+      `Path could not be proven safe before opening: ${target}`,
+      "PATH_TRAVERSAL",
+      { cause: lastError },
+    );
   }
   throw lastError;
 }

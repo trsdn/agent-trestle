@@ -3,7 +3,14 @@ import { constants } from "node:fs";
 import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { openSymlinkSafe, pinDirectory, releasePin, verifyDescendant, verifyPinnedDirectory } from "../security/path-security.mjs";
+import {
+  isMissingDuringResolve,
+  openSymlinkSafe,
+  pinDirectory,
+  releasePin,
+  verifyDescendant,
+  verifyPinnedDirectory,
+} from "../security/path-security.mjs";
 
 const DEFAULT_VERSION = 1;
 const LOCK_RETRY_MS = 10;
@@ -160,7 +167,7 @@ async function pathExists(path, verify) {
     await handle.close();
     return true;
   } catch (error) {
-    if (error.code === "ENOENT") return false;
+    if (isMissingDuringResolve(error)) return false;
     throw error;
   }
 }
@@ -209,7 +216,7 @@ async function readLockSnapshot(path, { verify }) {
       try {
         current = await lstat(path);
       } catch (error) {
-        if (error.code === "ENOENT") return null;
+        if (isMissingDuringResolve(error)) return null;
         throw error;
       }
       if (current.isSymbolicLink()) {
@@ -226,7 +233,7 @@ async function readLockSnapshot(path, { verify }) {
       await handle.close();
     }
   } catch (error) {
-    if (error.code === "ENOENT") return null;
+    if (isMissingDuringResolve(error)) return null;
     throw error;
   }
 }
@@ -347,15 +354,10 @@ async function createOwnedLock(path, {
 async function releaseOwnedLock(path, handle, token, verify, { beforeRemove } = {}) {
   let remove = false;
   try {
-    const [opened, current] = await Promise.all([handle.stat(), readLockSnapshot(path, { verify })]);
-    remove = Boolean(
-      current
-      && opened.dev === current.stat.dev
-      && opened.ino === current.stat.ino
-      && current.info.token === token,
-    );
+    const [opened, current] = await Promise.all([handle.stat(), lstat(path)]);
+    remove = opened.dev === current.dev && opened.ino === current.ino;
   } catch (error) {
-    if (error.code !== "ENOENT") {
+    if (!isMissingDuringResolve(error)) {
       await handle.close().catch(() => {});
       throw error;
     }
@@ -592,6 +594,10 @@ async function withLock(lockPath, action, {
     try {
       ownedLock = await createOwnedLock(lockPath, { verify, clockMs });
     } catch (error) {
+      if (isMissingDuringResolve(error)) {
+        await sleep(LOCK_RETRY_MS);
+        continue;
+      }
       if (error.code !== "EEXIST") throw error;
     }
     if (ownedLock) {

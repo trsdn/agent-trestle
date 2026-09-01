@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
@@ -32,13 +32,27 @@ async function prepare(name) {
   return { root, outside };
 }
 
+async function replaceWithOutsidePath(target, outsideTarget) {
+  await rm(target, { force: true });
+  try {
+    await symlink(outsideTarget, target);
+  } catch (error) {
+    if (process.platform !== "win32" || error.code !== "EPERM") throw error;
+    try {
+      await lstat(target);
+    } catch (lstatError) {
+      if (lstatError.code === "EPERM") return;
+    }
+    throw error;
+  }
+}
+
 function replaceWithOutside(target, outsideTarget) {
   let replaced = false;
   return async ({ path: candidate }) => {
     if (replaced || candidate !== target) return;
     replaced = true;
-    await rm(target, { force: true });
-    await symlink(outsideTarget, target);
+    await replaceWithOutsidePath(target, outsideTarget);
   };
 }
 

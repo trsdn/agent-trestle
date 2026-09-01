@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { constants } from "node:fs";
 import test from "node:test";
 import {
+  isMissingDuringResolve,
   openSymlinkSafe,
   PathSecurityError,
   symlinkSafeFlags,
@@ -60,6 +61,35 @@ test("truncation is allowed where the kernel refuses the link itself", { skip: !
 
 test("non-numeric flags are rejected", () => {
   assert.throws(() => symlinkSafeFlags("rw", NATIVE), TypeError);
+});
+
+test("emulated open wraps exhausted delete-pending retries in a path security error", async () => {
+  const platformError = Object.assign(new Error("delete pending"), { code: "EPERM" });
+  let opens = 0;
+  await assert.rejects(
+    () => openSymlinkSafe("/srv/target", constants.O_RDONLY, undefined, {
+      ...EMULATED,
+      attempts: 2,
+      retryMs: 0,
+      lstatImpl: async () => statLike(),
+      openImpl: async () => { opens += 1; throw platformError; },
+    }),
+    (error) => error instanceof PathSecurityError
+      && error.code === "PATH_TRAVERSAL"
+      && error.cause === platformError,
+  );
+  assert.equal(opens, 2);
+});
+
+test("Windows delete-pending errors are treated as vanished names only on Windows", () => {
+  const error = Object.assign(new Error("delete pending"), { code: "EPERM" });
+  assert.equal(isMissingDuringResolve(error, EMULATED), true);
+  assert.equal(isMissingDuringResolve(error, NATIVE), false);
+  const wrapped = new PathSecurityError("wrapped", "PATH_TRAVERSAL", { cause: error });
+  assert.equal(isMissingDuringResolve(wrapped, EMULATED), true);
+  assert.equal(isMissingDuringResolve(wrapped, NATIVE), false);
+  const enoent = Object.assign(new Error("gone"), { code: "ENOENT" });
+  assert.equal(isMissingDuringResolve(enoent, NATIVE), true);
 });
 
 test("emulated open refuses a link that is visible before opening", async () => {

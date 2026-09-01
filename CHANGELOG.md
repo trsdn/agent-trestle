@@ -94,6 +94,9 @@ are not yet stable and may change without a major version bump.
 
 ### Changed
 
+- Wrapped exhausted Windows delete-pending open retries in `PathSecurityError`,
+  so Node 20 on Windows fails closed instead of leaking raw `EPERM`/`EBADF`/
+  `EBUSY` errors from secure opens.
 - Replaced every direct `O_NOFOLLOW` open with `openSymlinkSafe`, which keeps
   the kernel refusal wherever the platform provides one and reconstructs the
   same property from an `lstat`/open/identity sequence where it does not. POSIX
