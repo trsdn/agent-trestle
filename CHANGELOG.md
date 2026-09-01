@@ -10,6 +10,8 @@ are not yet stable and may change without a major version bump.
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-09-01
+
 ### Added
 
 - Windows is now a supported platform for agent execution, through the sandbox.
