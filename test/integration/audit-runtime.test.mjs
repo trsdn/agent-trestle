@@ -3,6 +3,7 @@ import { chmod, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
+import { POSIX_EXECUTABLE_SCRIPT_ONLY, POSIX_OWNERSHIP_ONLY } from "../helpers/platform.mjs";
 import { auditRootFor, reconcileAuditTask } from "../../src/audit/index.mjs";
 import { EXIT_CODES, main, runCli } from "../../src/cli/main.mjs";
 
@@ -39,7 +40,7 @@ async function initializedProject(name) {
 
 const ROUTE = ["--project", "example-project", "--workstream", "main", "--role", "builder"];
 
-test("dispatch writes a reconcilable audit segment under .trestle/audit", async () => {
+test("dispatch writes a reconcilable audit segment under .trestle/audit", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot, binary } = await initializedProject("dispatch-audit");
   const invoked = capture(projectRoot);
   const exitCode = await runCli(
@@ -84,7 +85,7 @@ test("dispatch writes a reconcilable audit segment under .trestle/audit", async 
   assert.equal(settled.priorHash, started.hash);
 });
 
-test("a non-zero dispatch is recorded as a failure, never as success", async () => {
+test("a non-zero dispatch is recorded as a failure, never as success", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot } = await initializedProject("dispatch-audit-failure");
   const binary = path.join(projectRoot, "failing-copilot");
   await writeFile(binary, "#!/usr/bin/env node\nprocess.exit(9);\n");
@@ -109,7 +110,7 @@ test("a non-zero dispatch is recorded as a failure, never as success", async () 
   assert.equal(settled.event.execution.exitCode, 9);
 });
 
-test("--no-audit suppresses every record", async () => {
+test("--no-audit suppresses every record", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot, binary } = await initializedProject("dispatch-no-audit");
   const invoked = capture(projectRoot);
   const exitCode = await runCli(
@@ -121,7 +122,7 @@ test("--no-audit suppresses every record", async () => {
   await assert.rejects(readdir(auditRootFor(projectRoot)), (error) => error.code === "ENOENT");
 });
 
-test("an audit write failure fails the command instead of degrading to success", async () => {
+test("an audit write failure fails the command instead of degrading to success", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot, binary } = await initializedProject("audit-write-failure");
   // A regular file where the audit root must be a directory: the writer cannot
   // pin it, so the record cannot be written.
@@ -138,7 +139,7 @@ test("an audit write failure fails the command instead of degrading to success",
   assert.equal(failure.error.code, "AUDIT_WRITE_FAILED");
 });
 
-test("run gives every task its own writer under one run", async () => {
+test("run gives every task its own writer under one run", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot, binary } = await initializedProject("run-audit");
   await writeFile(path.join(projectRoot, "tasks.json"), JSON.stringify({
     version: 1,
@@ -182,7 +183,7 @@ test("run gives every task its own writer under one run", async () => {
   }
 });
 
-test("fleet records filesystem-mutating operations", async () => {
+test("fleet records filesystem-mutating operations", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const repoRoot = path.join(workRoot, "fleet-audit");
   await mkdir(repoRoot, { recursive: true });
   const { execFile } = await import("node:child_process");

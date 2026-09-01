@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { EventEmitter } from "node:events";
 import test from "node:test";
+import { POSIX_PROCESS_GROUPS_ONLY } from "../helpers/platform.mjs";
 import { createLiveChildSupervisor } from "../../src/process/live-child-supervisor.mjs";
 
 class FakeProcess extends EventEmitter {
@@ -64,7 +65,7 @@ test("supervisor installs one handler per signal only while live children exist"
   assert.equal(processImpl.listenerCount("SIGHUP"), 0);
 });
 
-test("supervisor terminates multiple detached groups before re-raising the parent signal", async () => {
+test("supervisor terminates multiple detached groups before re-raising the parent signal", { skip: POSIX_PROCESS_GROUPS_ONLY }, async () => {
   const processImpl = new FakeProcess();
   const reRaised = [];
   const supervisor = createLiveChildSupervisor({
@@ -132,7 +133,7 @@ test("supervisor never signals the caller's own process group", async () => {
   assert.deepEqual(child.kills, ["SIGTERM", "SIGKILL"]);
 });
 
-test("supervisor leaves an existing library-consumer signal policy in control", async () => {
+test("supervisor leaves an existing library-consumer signal policy in control", { skip: POSIX_PROCESS_GROUPS_ONLY }, async () => {
   const processImpl = new FakeProcess();
   let externalSignals = 0;
   const externalHandler = () => {

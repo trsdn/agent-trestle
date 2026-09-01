@@ -4,6 +4,7 @@ import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
+import { POSIX_EXECUTABLE_SCRIPT_ONLY } from "../helpers/platform.mjs";
 import { EXIT_CODES, main, runCli } from "../../src/cli/main.mjs";
 
 const workRoot = await makeScratchRoot("review-merge-cli");
@@ -98,7 +99,7 @@ async function reviewableRepo(name, { autoMerge = true, owners = { builder: ["**
 
 const REVIEW = ["review", "--base", "main", "--head", "topic", "--producer", "builder", "--reviewer", "code-review"];
 
-test("a gated CLI merge moves exactly the reviewed content", async () => {
+test("a gated CLI merge moves exactly the reviewed content", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { repoRoot, headOid } = await reviewableRepo("merges");
   const baseBefore = git(repoRoot, "rev-parse", "main");
 
@@ -137,7 +138,7 @@ test("a gated CLI merge moves exactly the reviewed content", async () => {
   assert.equal(git(repoRoot, "rev-parse", "--abbrev-ref", "HEAD"), "topic");
 });
 
-test("an ownership violation blocks the merge and moves nothing", async () => {
+test("an ownership violation blocks the merge and moves nothing", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { repoRoot } = await reviewableRepo("ownership", { owners: { someone_else: ["**"] } });
   const baseBefore = git(repoRoot, "rev-parse", "main");
 
@@ -153,7 +154,7 @@ test("an ownership violation blocks the merge and moves nothing", async () => {
   assert.equal(git(repoRoot, "rev-parse", "main"), baseBefore, "a blocked merge must move nothing");
 });
 
-test("a frozen reviewer environment survives spawning under coverage", async () => {
+test("a frozen reviewer environment survives spawning under coverage", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   // Regression: the scrubbed reviewer environment is frozen, and Node injects
   // NODE_V8_COVERAGE into a child's env object at spawn time when the parent
   // runs under coverage. Passing the frozen object straight through threw

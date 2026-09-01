@@ -3,8 +3,8 @@ import { lstat, mkdir, open, realpath, rm, stat } from "node:fs/promises";
 import path from "node:path";
 
 export class PathSecurityError extends Error {
-  constructor(message, code = "PATH_TRAVERSAL") {
-    super(message);
+  constructor(message, code = "PATH_TRAVERSAL", options = undefined) {
+    super(message, options);
     this.name = "PathSecurityError";
     this.code = code;
   }
@@ -14,6 +14,50 @@ export function isWithin(root, candidate) {
   const relative = path.relative(root, candidate);
   return relative === ""
     || (!relative.startsWith(`..${path.sep}`) && relative !== ".." && !path.isAbsolute(relative));
+}
+
+/**
+ * Recognises the location Windows moves an entry to when it is deleted while a
+ * handle is still open.
+ *
+ * NTFS implements POSIX-style delete-while-open by unlinking the name from its
+ * directory and parking the file under the reserved metadata directory
+ * `\$Extend\$Deleted` until the last handle closes. `lstat` on the original
+ * name reports `ENOENT`, exactly as POSIX would, but `realpath` still resolves
+ * it - to that reserved location. Read literally, a lock file another writer
+ * has just released therefore looks like a path that escaped the pinned root.
+ *
+ * `\$Extend` is NTFS-internal: user code cannot create, rename into, or write
+ * inside it, so matching it can only ever mean "this entry was unlinked" and
+ * cannot be used to smuggle a path past containment.
+ */
+function isDeletePending(resolved) {
+  return /^(?:\\\\\?\\)?[A-Za-z]:\\\$Extend\\\$Deleted\\/i.test(resolved);
+}
+
+/**
+ * Whether a failure to resolve or open a name means it is simply not there.
+ *
+ * POSIX says `ENOENT`. Windows says `ENOENT` too once the entry is fully gone,
+ * but during the delete-pending window - after the unlink, before the last
+ * handle closes - libuv surfaces the same condition as `EPERM`, `EBADF` or
+ * `EBUSY` depending on which syscall observed it. All three have been seen from
+ * `realpath` and `open` against a lock file another writer had just released.
+ *
+ * Treating them as hard errors made an ordinary lock release look like a
+ * containment failure to every concurrent reader. Walking up to the nearest
+ * resolvable ancestor is the behaviour `ENOENT` already gets, and it is equally
+ * safe: the lexical containment check and the per-component symlink scan have
+ * both already run before this point.
+ */
+const WINDOWS_VANISHED_CODES = new Set(["EPERM", "EBADF", "EBUSY"]);
+
+export function isMissingDuringResolve(error, { platform = process.platform } = {}) {
+  if (error instanceof PathSecurityError && error.cause) {
+    return isMissingDuringResolve(error.cause, { platform });
+  }
+  return error.code === "ENOENT"
+    || (platform === "win32" && WINDOWS_VANISHED_CODES.has(error.code));
 }
 
 async function assertNoSymlinkComponents(target, { allowMissing = false } = {}) {
@@ -26,7 +70,12 @@ async function assertNoSymlinkComponents(target, { allowMissing = false } = {}) 
     try {
       info = await lstat(current);
     } catch (error) {
-      if (error.code === "ENOENT" && allowMissing) return;
+      if (isMissingDuringResolve(error)) {
+        if (allowMissing) return;
+        if (error.code !== "ENOENT") {
+          throw new PathSecurityError(`Path changed while it was being verified: ${target}`);
+        }
+      }
       throw error;
     }
     if (info.isSymbolicLink()) {
@@ -175,12 +224,21 @@ export async function verifyDescendant(pin, candidate, { allowMissing = true } =
   while (true) {
     try {
       const existingRealPath = await realpath(existing);
+      if (isDeletePending(existingRealPath)) {
+        // Unlinked, not escaped - treat it exactly as the ENOENT that POSIX
+        // would have reported and keep walking up the chain.
+        if (existing === pin.path) {
+          throw new PathSecurityError(`Pinned root was deleted: ${pin.path}`);
+        }
+        existing = path.dirname(existing);
+        continue;
+      }
       if (!isWithin(pin.realPath, existingRealPath)) {
         throw new PathSecurityError(`Path resolves outside pinned root: ${candidate}`);
       }
       break;
     } catch (error) {
-      if (error.code !== "ENOENT" || existing === pin.path) throw error;
+      if (!isMissingDuringResolve(error) || existing === pin.path) throw error;
       existing = path.dirname(existing);
     }
   }
@@ -298,12 +356,155 @@ export async function assertFileHandleMatchesPath(handle, candidate, {
   return identity;
 }
 
-function noFollowFlags(flags) {
-  if (!Number.isInteger(constants.O_NOFOLLOW)) {
+const SUPPORTS_O_NOFOLLOW = Number.isInteger(constants.O_NOFOLLOW);
+// Bounded so a benign race settles while an attacker who keeps winning it is
+// still refused. Backoff matters here: a delete-pending entry under heavy
+// contention can stay unopenable for longer than a few milliseconds, and the
+// whole budget is still well under a second. Only used where the kernel
+// refusal is unavailable.
+const EMULATED_OPEN_ATTEMPTS = 10;
+const EMULATED_RETRY_MS = 2;
+const EMULATED_RETRY_CAP_MS = 50;
+
+function sleep(ms) {
+  // Deliberately not unref'd: this runs in the middle of an open that has
+  // already been committed to, so the process must stay alive to finish it
+  // rather than exiting and leaving the caller's promise unsettled.
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
+/**
+ * The error a POSIX kernel raises for `O_NOFOLLOW` against a link. Reproduced
+ * verbatim on platforms without the flag so callers that already branch on
+ * `ELOOP` behave identically everywhere.
+ */
+function symlinkRefusal(target) {
+  const error = new Error(`ELOOP: symbolic link refused, open '${target}'`);
+  error.code = "ELOOP";
+  error.path = target;
+  return error;
+}
+
+/**
+ * Adds the kernel-level symlink refusal where the platform has one.
+ *
+ * `O_NOFOLLOW` makes the kernel refuse to open a symlink at all, which is a
+ * guarantee rather than a check. Windows has no equivalent exposed through
+ * Node, so there the link has to be excluded by observation instead - see
+ * `openSymlinkSafe`, which is the only supported way to take that path.
+ *
+ * A platform that is neither Windows nor `O_NOFOLLOW`-capable is unknown
+ * territory, so it still fails closed rather than being guessed at.
+ */
+export function symlinkSafeFlags(flags, {
+  platform = process.platform,
+  supportsNoFollow = SUPPORTS_O_NOFOLLOW,
+} = {}) {
+  if (!Number.isInteger(flags)) throw new TypeError("flags must be numeric");
+  if (supportsNoFollow) return flags | constants.O_NOFOLLOW;
+  if (platform !== "win32") {
     throw new PathSecurityError("O_NOFOLLOW is unavailable on this platform", "UNSUPPORTED_PLATFORM");
   }
-  if (!Number.isInteger(flags)) throw new TypeError("flags must be numeric");
-  return flags | constants.O_NOFOLLOW;
+  // Truncation happens as part of the open itself, so a symlinked target would
+  // already be destroyed by the time any post-open check could reject it. No
+  // caller needs this today; the guard exists so a future one cannot quietly
+  // introduce the hole.
+  if (Number.isInteger(constants.O_TRUNC) && (flags & constants.O_TRUNC) !== 0) {
+    throw new PathSecurityError(
+      "Truncating open cannot be made symlink-safe without O_NOFOLLOW",
+      "UNSUPPORTED_PLATFORM",
+    );
+  }
+  return flags;
+}
+
+/**
+ * Opens `target` while refusing to act on a symbolic link.
+ *
+ * Where `O_NOFOLLOW` exists this is exactly the historical behaviour: one open
+ * call, refused by the kernel, and the raw `errno` reaches the caller unchanged
+ * so existing `ELOOP`/`EEXIST` handling keeps working.
+ *
+ * Where it does not, the same property is reconstructed from two observations
+ * around the open - `lstat` first to narrow the window, and a
+ * descriptor-versus-path comparison afterwards to close it. The descriptor is
+ * pinned to whatever it actually opened, so a link swapped into the window
+ * makes the two disagree and the handle is closed and refused before any caller
+ * can read or write through it. A link is reported as `ELOOP` so callers cannot
+ * tell the platforms apart.
+ *
+ * The reconstruction is strictly weaker than a kernel refusal: it *detects*
+ * rather than *prevents*. It fails closed, and every write path in this
+ * codebase creates with `O_CREAT|O_EXCL` and renames into place, which the
+ * runtime refuses outright against an existing link.
+ */
+export async function openSymlinkSafe(target, flags, mode, {
+  openImpl = open,
+  lstatImpl = lstat,
+  platform = process.platform,
+  supportsNoFollow = SUPPORTS_O_NOFOLLOW,
+  attempts = EMULATED_OPEN_ATTEMPTS,
+  retryMs = EMULATED_RETRY_MS,
+} = {}) {
+  const resolvedFlags = symlinkSafeFlags(flags, { platform, supportsNoFollow });
+  const openHandle = () => (mode === undefined
+    ? openImpl(target, resolvedFlags)
+    : openImpl(target, resolvedFlags, mode));
+  if (supportsNoFollow) return await openHandle();
+
+  let lastError;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (attempt > 0) await sleep(Math.min(retryMs * (2 ** (attempt - 1)), EMULATED_RETRY_CAP_MS));
+    try {
+      return await attemptEmulatedOpen(target, openHandle, lstatImpl);
+    } catch (error) {
+      // A link is a refusal, not a race, so it is never retried.
+      if (error.code === "ELOOP") throw error;
+      // Everything else here is a state POSIX would not have surfaced at all.
+      // Windows reports an open against a delete-pending entry as EPERM/EBADF/
+      // EBUSY, and a lock file legitimately replaced by another writer shows up
+      // as an identity mismatch. Retrying lets an ordinary race settle; an
+      // attacker who keeps winning it still runs out of attempts and is refused.
+      const retryable = WINDOWS_VANISHED_CODES.has(error.code)
+        || error instanceof PathSecurityError;
+      if (!retryable) throw error;
+      lastError = error;
+    }
+  }
+  if (lastError instanceof PathSecurityError) throw lastError;
+  if (WINDOWS_VANISHED_CODES.has(lastError?.code)) {
+    throw new PathSecurityError(
+      `Path could not be proven safe before opening: ${target}`,
+      "PATH_TRAVERSAL",
+      { cause: lastError },
+    );
+  }
+  throw lastError;
+}
+
+async function attemptEmulatedOpen(target, openHandle, lstatImpl) {
+  try {
+    if ((await lstatImpl(target)).isSymbolicLink()) throw symlinkRefusal(target);
+  } catch (error) {
+    // A missing entry is normal for a create; anything else is real.
+    if (error.code !== "ENOENT") throw error;
+  }
+
+  const handle = await openHandle();
+  try {
+    const [opened, current] = await Promise.all([handle.stat(), lstatImpl(target)]);
+    if (current.isSymbolicLink()) throw symlinkRefusal(target);
+    // A link swapped in and back out again would leave this descriptor on the
+    // attacker's file while the path itself looks ordinary, so identity has to
+    // be compared too, not just the link bit.
+    if (opened.dev !== current.dev || opened.ino !== current.ino) {
+      throw new PathSecurityError(`Path changed while it was being opened: ${target}`);
+    }
+    return handle;
+  } catch (error) {
+    await handle.close().catch(() => {});
+    throw error;
+  }
 }
 
 async function symlinkOpenError(error, candidate, lstatImpl) {
@@ -346,9 +547,7 @@ export async function openVerifiedFile(pin, candidate, {
 
   let handle;
   try {
-    handle = mode === undefined
-      ? await openImpl(absolute, noFollowFlags(flags))
-      : await openImpl(absolute, noFollowFlags(flags), mode);
+    handle = await openSymlinkSafe(absolute, flags, mode, { openImpl, lstatImpl });
   } catch (error) {
     throw await symlinkOpenError(error, absolute, lstatImpl);
   }

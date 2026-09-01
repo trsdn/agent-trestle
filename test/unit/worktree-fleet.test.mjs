@@ -6,6 +6,7 @@ import { EventEmitter } from "node:events";
 import path from "node:path";
 import test from "node:test";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
+import { POSIX_OWNERSHIP_ONLY } from "../helpers/platform.mjs";
 import {
   createGitProcessAdapter,
   createWorktreeFleet,
@@ -50,7 +51,7 @@ test("worktree and branch names are safe and deterministic", () => {
   assert.match(safeBranchName("Feature"), /^trestle\/task-/);
 });
 
-test("fleet uses explicit repo root and safe worktree path", async () => {
+test("fleet uses explicit repo root and safe worktree path", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const calls = [];
   const git = {
     run: async (call) => {
@@ -69,7 +70,7 @@ test("fleet uses explicit repo root and safe worktree path", async () => {
   assert.equal(calls[0].args.at(-1), "main");
 });
 
-test("failed worktrees and branches are retained", async () => {
+test("failed worktrees and branches are retained", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const calls = [];
   await mkdir(path.join(scratchRoot, "unit-fleet-repo"), { recursive: true });
   const fleet = createWorktreeFleet({
@@ -113,7 +114,7 @@ test("fleet rejects option-like start refs", async () => {
   );
 });
 
-test("fleet pins roots and rejects replacement or symlinked remove candidates before Git", async () => {
+test("fleet pins roots and rejects replacement or symlinked remove candidates before Git", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const root = path.join(scratchRoot, "fleet-pins");
   const repoRoot = path.join(root, "repo");
   const worktreeRoot = path.join(root, "fleet");
@@ -269,7 +270,7 @@ test("remove fails closed with no git side effect when the fleet root cannot be 
   await rm(base, { recursive: true, force: true });
 });
 
-test("create invokes git once with an in-root worktree path when the root is securely held", async () => {
+test("create invokes git once with an in-root worktree path when the root is securely held", { skip: POSIX_OWNERSHIP_ONLY }, async () => {
   const base = path.join(scratchRoot, "fleet-race-secure");
   const repoRoot = path.join(base, "repo");
   const worktreeRoot = path.join(base, "fleet");

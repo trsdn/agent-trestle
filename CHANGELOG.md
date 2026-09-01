@@ -12,6 +12,24 @@ are not yet stable and may change without a major version bump.
 
 ### Added
 
+- Windows is now a supported platform for agent execution, through the sandbox.
+  `package.json` no longer declares `"os": ["!win32"]`, and CI covers
+  `windows-latest` alongside Linux and macOS. `dispatch` and `run` refuse to
+  run an agent unsandboxed on Windows with exit 3 and `SANDBOX_REQUIRED`: npm
+  installs Copilot CLI there as a `.cmd` shim that Node will not spawn without
+  a shell, and Windows has no process groups to bound a forked helper with.
+  `fleet` and `run --isolate` continue to fail closed on Windows because
+  secure-hold verification needs POSIX ownership.
+- Added an opt-in container sandbox for agent execution. `--sandbox` on
+  `dispatch` and `run` rewrites the Copilot invocation into a container run, so
+  the agent is contained by a mount and network namespace rather than by the
+  working directory it happens to be started in. A closed `config.sandbox`
+  block declares the image and limits; declaring it does not enable it, and
+  `--sandbox` without it is a usage error rather than a silent unsandboxed run.
+  Defaults deny: no network, `--cap-drop ALL`, `no-new-privileges`, a bounded
+  pid count, the working directory as the only mount, host environment passed
+  by name so values never reach argv, and a read-only Copilot home. Exposed as
+  the `./sandbox` subpath export.
 - Added a CodeQL workflow for JavaScript and TypeScript analysis on pushes,
   pull requests, a weekly schedule, and manual runs.
 - Added `agent-trestle run --manifest FILE`, a closed versioned task-manifest
@@ -76,6 +94,30 @@ are not yet stable and may change without a major version bump.
 
 ### Changed
 
+- Wrapped exhausted Windows delete-pending open retries in `PathSecurityError`,
+  so Node 20 on Windows fails closed instead of leaking raw `EPERM`/`EBADF`/
+  `EBUSY` errors from secure opens.
+- Replaced every direct `O_NOFOLLOW` open with `openSymlinkSafe`, which keeps
+  the kernel refusal wherever the platform provides one and reconstructs the
+  same property from an `lstat`/open/identity sequence where it does not. POSIX
+  behaviour is unchanged, including the raw `ELOOP`/`EEXIST` codes callers
+  branch on. This removes the single largest Windows blocker: 197 failing
+  assertions across 26 files became 129 across 20, and `init`, `validate` and a
+  sandboxed `dispatch` now complete on Windows. The platform is still refused at
+  install time — the state lock protocol assumes POSIX unlink semantics and has
+  not been characterised on Windows yet.
+- Documented WSL2 as the supported way to run from a Windows host, including
+  the requirement to keep the checkout off `/mnt/c`: DrvFs synthesizes Linux
+  ownership and mode instead of translating NTFS ACLs, so secure-hold
+  verification either refuses it for the wrong reason or, with the `metadata`
+  mount option, can be made to pass without the guarantee being true.
+- Documented why Windows is unsupported in terms of the actual constraints
+  rather than the worktree fleet alone: the package refuses to install there
+  (`"os": ["!win32"]`, `EBADPLATFORM`), audit and state writes need
+  `O_NOFOLLOW`, secure-hold verification needs POSIX ownership, and
+  process-group termination has no Windows equivalent and would degrade open.
+  Added a `Platform support` section to the security model and pointed the
+  README, `CONTRIBUTING.md`, and `AGENTS.md` requirement notes at it.
 - Renamed `test/helpers/scratch` to `test/helpers/scratch.mjs` and gave every
   importer the explicit extension. The extensionless file resolved, but relied
   on the loader inferring a module type it had no extension to declare.
@@ -122,6 +164,15 @@ are not yet stable and may change without a major version bump.
 
 ### Fixed
 
+- `state-unlock` no longer rejects a lock identity this process itself reported
+  on Windows. NTFS file IDs combine an MFT record number with a sequence number
+  in the high bits, so they routinely exceed 2^53 and failed the safe-integer
+  check, making operator lock recovery impossible.
+- Added `.gitattributes` so text files normalise to LF in the index and check
+  out as LF on every platform. `scripts/lint.mjs` rejects CRLF, so a checkout on
+  a machine with `core.autocrlf=true` (the Windows default) previously
+  materialised the whole repository with CRLF and failed lint on 113 files
+  before any change was made.
 - A failed state-root initialisation no longer leaves directory creation running
   in the background. `health()` pinned the project, workstream, and config roots
   with `Promise.all`, which rejects on the first failure without stopping the

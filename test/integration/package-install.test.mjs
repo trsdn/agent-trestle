@@ -18,6 +18,14 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? packageRoot,
     encoding: "utf8",
+    // On Windows both npm and an installed bin shim are `.cmd` files, which
+    // Node refuses to spawn without a shell. That is safe here and only here:
+    // every command and argument is a fixed literal owned by this test, with no
+    // prompt or other untrusted value anywhere in argv. The process adapters
+    // under test must never do this, which is why they do not. `node` itself is
+    // a real executable, so it is still spawned directly and its argv is not
+    // re-parsed by a shell.
+    shell: process.platform === "win32" && command !== process.execPath,
     env: { ...process.env, npm_config_cache: path.join(fixtureRoot, "npm-cache") },
   });
   assert.equal(result.status, 0, `${command} ${args.join(" ")}\n${result.stderr}`);
@@ -65,7 +73,7 @@ test("npm pack installs a clean CLI with public exports and bundled templates", 
     exportsOutput.trim(),
     [
       "audit", "config", "copilot", "dashboard", "dispatch", "manifest",
-      "ownership", "review", "run", "scheduler", "state", "worktrees",
+      "ownership", "review", "run", "sandbox", "scheduler", "state", "worktrees",
     ].join(","),
   );
 

@@ -7,6 +7,7 @@ export * as manifest from "./manifest/index.mjs";
 export * as ownership from "./ownership/index.mjs";
 export * as review from "./review/index.mjs";
 export * as run from "./run/index.mjs";
+export * as sandbox from "./sandbox/index.mjs";
 export * as scheduler from "./scheduler/index.mjs";
 export * as state from "./state/index.mjs";
 export * as worktrees from "./worktrees/index.mjs";

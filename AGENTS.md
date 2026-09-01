@@ -22,8 +22,11 @@ Consequences an agent must not get wrong:
 - Adding any dependency is a reviewable decision with its own bar; see
   [the zero-dependency rule](CONTRIBUTING.md#the-zero-dependency-rule).
 
-Requirements: Node.js ≥ 20 (`.nvmrc` pins 22), Git, Linux or macOS. The
-worktree fleet needs POSIX ownership semantics and fails closed on Windows.
+Requirements: Node.js ≥ 20 (`.nvmrc` pins 22), Git, and Linux, macOS or
+Windows. On Windows agent execution requires `--sandbox` and a container
+runtime — the CLI exits 3 with `SANDBOX_REQUIRED` otherwise — and the worktree
+fleet fails closed because it needs POSIX ownership semantics. See
+[platform support](docs/security-model.md#platform-support).
 `npm link` exposes the `agent-trestle` binary locally.
 
 ## Commands
@@ -51,8 +54,10 @@ build, and it is already part of `check`.
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same commands as
 four jobs: `Lint`, `Test` across a matrix of Node 20 and 22 on
 `ubuntu-latest` and `macos-latest`, `Package` (`npm pack --dry-run`), and
-`Coverage`. Windows is excluded on purpose — the worktree fleet requires POSIX
-ownership semantics and fails closed there. Coverage thresholds run only on the
+`Coverage`. The `Test` matrix covers Node 20 and 22 on `ubuntu-latest`,
+`macos-latest` and `windows-latest`; on Windows the fleet's success-path tests
+are skipped with a stated reason (see `test/helpers/platform.mjs`) because it
+fails closed there by design. Coverage thresholds run only on the
 `.nvmrc` runtime, because the built-in threshold flags need Node 22 while the
 suite itself must still pass on the Node 20 floor. So `npm run check` locally
 plus Node 20 compatibility is what CI will hold you to.
@@ -98,8 +103,8 @@ Project-owned configuration is separated from reusable runtime code:
 ```
 
 Each stage is a directory under `src/`. `audit`, `config`, `copilot`,
-`dashboard`, `dispatch`, `ownership`, `review`, `scheduler`, `state` and
-`worktrees` are public subpath exports declared in `package.json`; `cli`,
+`dashboard`, `dispatch`, `ownership`, `review`, `sandbox`, `scheduler`, `state`
+and `worktrees` are public subpath exports declared in `package.json`; `cli`,
 `process` and `security` are internal. The CLI entry point is
 `src/cli/agent-trestle.mjs`.
 

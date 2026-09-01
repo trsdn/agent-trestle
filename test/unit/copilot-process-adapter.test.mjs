@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { POSIX_EXECUTABLE_SCRIPT_ONLY } from "../helpers/platform.mjs";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
 import {
   inspectModelLog,
@@ -81,7 +82,7 @@ test("spawn adapter reports timeout and the actual termination signal", async ()
 // Startup was measured at 18 ms median and 35 ms worst case on an idle
 // machine, and is unbounded on a loaded CI runner; the process-tree test in
 // this file has used 700 ms without flaking, so match it.
-test("spawn adapter escalates to SIGKILL when a timed-out process ignores SIGTERM", async () => {
+test("spawn adapter escalates to SIGKILL when a timed-out process ignores SIGTERM", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const startedAt = Date.now();
   const result = await spawnProcess(
     process.execPath,
@@ -183,7 +184,7 @@ test("spawn adapter stops a process that floods stderr past the configured cap w
   assert.ok(Buffer.byteLength(result.stderr) <= 1_000, "buffered stderr must not exceed the cap");
 });
 
-test("runCopilot reports a structured output-limit failure for a Copilot binary that floods stdout", async () => {
+test("runCopilot reports a structured output-limit failure for a Copilot binary that floods stdout", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const result = await runCopilot({
     prompt: "Perform deterministic test work",
     agent: "test-agent",
@@ -303,7 +304,7 @@ test("runCopilot redacts prompt canaries from returned args, output, and errors"
   assert.equal(errorWithSpawnargs.error.spawnargs.includes(prompt), false);
 });
 
-test("runCopilot redacts the trailing prompt from a real spawned reviewer echoing its own argv, even when agent equals -p", async () => {
+test("runCopilot redacts the trailing prompt from a real spawned reviewer echoing its own argv, even when agent equals -p", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const prompt = "REAL_SPAWN_RUNCOPILOT_CANARY_4d7c";
   const result = await runCopilot({
     prompt,
@@ -401,7 +402,7 @@ test("runner failures are returned as structured process errors", async () => {
   assert.equal(result.error, expected);
 });
 
-test("fake Copilot executable reports success, failure, signal, timeout, and wrong-model diagnostics", async () => {
+test("fake Copilot executable reports success, failure, signal, timeout, and wrong-model diagnostics", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const common = {
     prompt: "Perform deterministic test work",
     agent: "test-agent",

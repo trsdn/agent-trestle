@@ -1,9 +1,16 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
-import { lstat, mkdir, open, readdir, rename, rm } from "node:fs/promises";
+import { lstat, mkdir, readdir, rename, rm } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { pinDirectory, releasePin, verifyDescendant, verifyPinnedDirectory } from "../security/path-security.mjs";
+import {
+  isMissingDuringResolve,
+  openSymlinkSafe,
+  pinDirectory,
+  releasePin,
+  verifyDescendant,
+  verifyPinnedDirectory,
+} from "../security/path-security.mjs";
 
 const DEFAULT_VERSION = 1;
 const LOCK_RETRY_MS = 10;
@@ -156,11 +163,11 @@ function validateSchema(value, schema, path = "$") {
 async function pathExists(path, verify) {
   try {
     await verify(path);
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await openSymlinkSafe(path, constants.O_RDONLY);
     await handle.close();
     return true;
   } catch (error) {
-    if (error.code === "ENOENT") return false;
+    if (isMissingDuringResolve(error)) return false;
     throw error;
   }
 }
@@ -201,7 +208,7 @@ function normalizeLockInfo(payload) {
 async function readLockSnapshot(path, { verify }) {
   try {
     await verify(path);
-    const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await openSymlinkSafe(path, constants.O_RDONLY);
     try {
       await verify(path);
       const stat = await handle.stat();
@@ -209,7 +216,7 @@ async function readLockSnapshot(path, { verify }) {
       try {
         current = await lstat(path);
       } catch (error) {
-        if (error.code === "ENOENT") return null;
+        if (isMissingDuringResolve(error)) return null;
         throw error;
       }
       if (current.isSymbolicLink()) {
@@ -226,13 +233,23 @@ async function readLockSnapshot(path, { verify }) {
       await handle.close();
     }
   } catch (error) {
-    if (error.code === "ENOENT") return null;
+    if (isMissingDuringResolve(error)) return null;
     throw error;
   }
 }
 
-function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {
-  if (!lock) return null;
+/**
+ * A filesystem identity value (`ino`/`dev`) must be integral and non-negative,
+ * but it is *not* required to be a "safe" integer. NTFS file IDs combine an MFT
+ * record number with a sequence number in the high bits and routinely exceed
+ * 2^53, so demanding safety here would discard the identity of every lock on
+ * Windows and make operator recovery impossible.
+ */
+function isFileIdentity(value) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {  if (!lock) return null;
   const ageMs = lock.info.epoch === null ? null : Math.max(0, nowMs - lock.info.epoch);
   const sameHost = lock.info.host === HOST;
   const pidAlive = sameHost && lock.info.pid !== null ? Boolean(isProcessAlive(lock.info.pid)) : null;
@@ -268,8 +285,8 @@ function describeLock(lock, { nowMs, staleMs, isProcessAlive }) {
 
 function unlockHint(context, lock, { recovery = false } = {}) {
   const hasToken = typeof lock?.token === "string" && lock.token.length > 0;
-  const hasInode = Number.isSafeInteger(lock?.ino);
-  const hasDevice = Number.isSafeInteger(lock?.dev);
+  const hasInode = isFileIdentity(lock?.ino);
+  const hasDevice = isFileIdentity(lock?.dev);
   const workstreamArgs = context.scope === "workstream"
     ? ["--workstream", context.workstreamId ?? "<workstream-id>"]
     : [];
@@ -315,9 +332,9 @@ async function createOwnedLock(path, {
   metadata = {},
 } = {}) {
   await verify(path);
-  const handle = await open(
+  const handle = await openSymlinkSafe(
     path,
-    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
     0o600,
   );
   const token = lockToken();
@@ -337,15 +354,10 @@ async function createOwnedLock(path, {
 async function releaseOwnedLock(path, handle, token, verify, { beforeRemove } = {}) {
   let remove = false;
   try {
-    const [opened, current] = await Promise.all([handle.stat(), readLockSnapshot(path, { verify })]);
-    remove = Boolean(
-      current
-      && opened.dev === current.stat.dev
-      && opened.ino === current.stat.ino
-      && current.info.token === token,
-    );
+    const [opened, current] = await Promise.all([handle.stat(), lstat(path)]);
+    remove = opened.dev === current.dev && opened.ino === current.ino;
   } catch (error) {
-    if (error.code !== "ENOENT") {
+    if (!isMissingDuringResolve(error)) {
       await handle.close().catch(() => {});
       throw error;
     }
@@ -429,10 +441,10 @@ async function revalidateIdentityAndUnlink(path, {
   const parentChain = await snapshotParentChain(path);
   let handle;
   try {
-    handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    handle = await openSymlinkSafe(path, constants.O_RDONLY);
   } catch (error) {
-    // ENOENT: unlinked in the window. ELOOP: a symlink was swapped in and
-    // O_NOFOLLOW refused to follow it. Both mean the authorized file is gone.
+    // ENOENT: unlinked in the window. ELOOP: a symlink was swapped in and the
+    // open refused it. Both mean the authorized file is gone.
     if (error.code === "ENOENT" || error.code === "ELOOP") {
       throw lockFailure("LOCK_REPLACED", `lock ${path} was replaced before recovery could complete`, context, lock);
     }
@@ -470,7 +482,12 @@ async function revalidateIdentityAndUnlink(path, {
 function identityInteger(value, name) {
   if (value === undefined || value === null) return undefined;
   const parsed = typeof value === "number" ? value : Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+  // NTFS file IDs combine an MFT record number with a sequence number in the
+  // high bits, so they routinely exceed 2^53 and are not "safe" integers.
+  // Rejecting them would make operator lock recovery impossible on Windows for
+  // an identity this process itself reported, so integrality is what is
+  // required here, not exact representability.
+  if (!Number.isInteger(parsed) || parsed < 0) {
     throw new TrestleStateError(`${name} must be a non-negative integer`, "INVALID_LOCK_IDENTITY");
   }
   return parsed;
@@ -577,6 +594,10 @@ async function withLock(lockPath, action, {
     try {
       ownedLock = await createOwnedLock(lockPath, { verify, clockMs });
     } catch (error) {
+      if (isMissingDuringResolve(error)) {
+        await sleep(LOCK_RETRY_MS);
+        continue;
+      }
       if (error.code !== "EEXIST") throw error;
     }
     if (ownedLock) {
@@ -762,7 +783,7 @@ export class TrestleStateStore {
 
   async #readFile(pathSpec) {
     await this.#verifyPath(pathSpec);
-    const handle = await open(pathSpec.path, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const handle = await openSymlinkSafe(pathSpec.path, constants.O_RDONLY);
     try {
       await this.#verifyPath(pathSpec);
       await assertHandleMatchesPath(handle, pathSpec.path);
@@ -776,9 +797,9 @@ export class TrestleStateStore {
     const pending = `${pathSpec.path}.pending-${safeSegment(String(this.idGenerator()), "generated ID")}`;
     const pendingSpec = { ...pathSpec, path: pending };
     await this.#verifyPath(pendingSpec);
-    const handle = await open(
+    const handle = await openSymlinkSafe(
       pending,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
       0o600,
     );
     try {

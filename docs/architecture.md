@@ -6,6 +6,7 @@ Agent Trestle separates project-owned configuration from reusable runtime code.
 .trestle project configuration
   -> deterministic workstream/role routing
   -> GitHub Copilot CLI process adapter
+     (optionally rewritten into a container sandbox)
   -> bounded scheduler or isolated worktree fleet
   -> exact-diff review and ownership enforcement
   -> state and per-run audit segments
@@ -20,6 +21,10 @@ Agent Trestle separates project-owned configuration from reusable runtime code.
   programmatically to the ownership, review, and scheduler APIs, so the config
   schema stays closed (`additionalProperties: false`) and small.
 - **Dispatch** resolves exactly one agent and launches one Copilot process.
+- **Sandbox** is opt-in containment for that process. It is a pure command
+  rewrite applied between argv construction and spawning, so it adds a kernel
+  boundary around the agent without taking over supervision, output caps or
+  redaction from the process adapter.
 - **Scheduling** orders tasks and applies explicit stop conditions.
 - **Review** is independent of production and binds approval to exact content.
 - **State** is scoped to one configured workstream; it is never selected by

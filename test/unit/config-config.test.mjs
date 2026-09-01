@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { posixPath } from "../helpers/platform.mjs";
 import { configPath, validateConfig } from "../../src/config/config.mjs";
 
 const minimal = {
@@ -26,6 +27,33 @@ test("validates explicit project, workstream, and role IDs with least-privilege 
   });
   assert.equal(config.copilot.binary, "copilot");
   assert.equal(config.copilot.timeoutMs, 0);
+  // No sandbox is configured, so there is nothing --sandbox could enable.
+  assert.equal(config.sandbox, undefined);
+});
+
+test("normalizes a declared sandbox without enabling it", () => {
+  const config = validateConfig({
+    ...minimal,
+    sandbox: { image: "ghcr.io/example/copilot:1" },
+  });
+  assert.equal(config.sandbox.image, "ghcr.io/example/copilot:1");
+  assert.equal(config.sandbox.runtime, "docker");
+  // Denying egress by default is what makes an escalation to "bridge" visible.
+  assert.equal(config.sandbox.network, "none");
+  // Declaring a sandbox does not grant any Copilot permission.
+  assert.equal(config.permissions.allowAllTools, false);
+});
+
+test("rejects a sandbox that cannot constrain anything", () => {
+  assert.throws(() => validateConfig({ ...minimal, sandbox: {} }), /image must be a non-empty string/);
+  assert.throws(
+    () => validateConfig({ ...minimal, sandbox: { image: "x", network: "host" } }),
+    /network must be one of none, bridge/,
+  );
+  assert.throws(
+    () => validateConfig({ ...minimal, sandbox: { image: "x", privileged: true } }),
+    /unknown keys: privileged/,
+  );
 });
 
 test("does not infer IDs from a path or basename", () => {
@@ -56,7 +84,9 @@ test("rejects duplicate deterministic routing IDs", () => {
 });
 
 test("uses only .trestle/config.json", () => {
-  assert.match(configPath("/repo"), /\/repo\/\.trestle\/config\.json$/);
+  // Asserted by segment rather than by literal string so the separator of the
+  // host is not baked into the expectation.
+  assert.equal(posixPath(configPath("/repo")).endsWith("/repo/.trestle/config.json"), true);
 });
 
 test("rejects unknown keys at all levels", () => {

@@ -1,5 +1,5 @@
 import { constants } from "node:fs";
-import { access, link, lstat, mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { access, link, lstat, mkdir, readFile, rename, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAgentDefinition } from "../config/agent-definition.mjs";
@@ -23,7 +23,13 @@ import { runReviewGate } from "../review/gate.mjs";
 import { createGitDiffRunner, createProcessAdapter } from "../review/process-adapter.mjs";
 import { loadManifest, ManifestError } from "../manifest/manifest.mjs";
 import { runManifest } from "../run/run.mjs";
-import { PathSecurityError, pinDirectory, releasePin, verifyDescendant } from "../security/path-security.mjs";
+import {
+  openSymlinkSafe,
+  PathSecurityError,
+  pinDirectory,
+  releasePin,
+  verifyDescendant,
+} from "../security/path-security.mjs";
 import { createAuditRecorder, generateRunId, routeTaskId } from "../audit/recorder.mjs";
 import { runTrestleMcpStdio } from "../state/mcp-server.mjs";
 import { createTrestleStateStore, TrestleStateError } from "../state/store.mjs";
@@ -80,12 +86,12 @@ const COMMAND_OPTION_SPECS = Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
     project: VALUE, workstream: VALUE, role: VALUE,
     prompt: VALUE, prompt_file: VALUE, skill: VALUE_REPEATABLE, binary: VALUE,
-    no_audit: BOOL,
+    no_audit: BOOL, sandbox: BOOL,
   }),
   run: Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
     manifest: VALUE, concurrency: VALUE, binary: VALUE, no_audit: BOOL,
-    isolate: BOOL, worktree_root: VALUE,
+    isolate: BOOL, worktree_root: VALUE, sandbox: BOOL,
   }),
   review: Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
@@ -217,6 +223,19 @@ function positiveInteger(value, label, fallback) {
   return parsed;
 }
 
+/**
+ * Filesystem identities are validated separately from ordinary numeric options:
+ * NTFS file IDs routinely exceed 2^53, so requiring a *safe* integer would
+ * reject the very identity `state-lock` had just emitted in its recovery hint.
+ */
+function fileIdentityInteger(value, label) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new CliError(`${label} must be a non-negative integer`, EXIT_CODES.USAGE, "USAGE");
+  }
+  return parsed;
+}
+
 function strictlyPositiveInteger(value, label, fallback) {
   const parsed = positiveInteger(value, label, fallback);
   if (parsed < 1) {
@@ -272,9 +291,9 @@ async function writeAtomicInitTarget(rootPin, target, targetName, content, { for
 
   let handle;
   try {
-    handle = await open(
+    handle = await openSymlinkSafe(
       pending,
-      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL,
       0o600,
     );
     await handle.writeFile(content, "utf8");
@@ -381,6 +400,10 @@ Global options:
   --help        Show this help
   --version     Show package version
 
+dispatch and run also accept:
+  --sandbox     Run the agent inside the container sandbox declared by
+                config.sandbox. Off by default; refuses if none is declared.
+
 ${identity.name} ${identity.version} (${identity.license})
 Project:      ${identity.repository}
 Report bugs:  ${identity.bugs}`;
@@ -477,6 +500,44 @@ async function doctorCommand(options, cwd) {
   return { ok, command: "doctor", projectRoot: root, checks };
 }
 
+/**
+ * Declaring a sandbox in config does not enable it: --sandbox does. Asking for
+ * containment that was never configured is a usage error rather than a silent
+ * fall back to running unsandboxed, which would be the one failure mode this
+ * flag exists to prevent.
+ *
+ * On Windows the sandbox is not optional. Node refuses to spawn the `.cmd`
+ * shim that npm installs Copilot CLI as unless a shell is used, and a shell
+ * concatenates argv rather than escaping it - with the prompt in argv, that is
+ * not a trade this project makes. Windows also has no process groups, so a
+ * helper forked by an agent could outlive termination. Both are contained by
+ * running the agent in a container, and neither is contained without one, so
+ * unsandboxed execution there is refused rather than half-supported.
+ */
+function resolveSandbox(options, config) {
+  if (options.sandbox !== true) {
+    if (process.platform === "win32") {
+      throw new CliError(
+        "Running an agent on Windows requires --sandbox: an unsandboxed agent "
+          + "cannot be spawned without a shell, and Windows has no process groups "
+          + "to bound it with. Configure sandbox.image and pass --sandbox, or run "
+          + "under WSL2.",
+        EXIT_CODES.NOT_SUPPORTED,
+        "SANDBOX_REQUIRED",
+      );
+    }
+    return undefined;
+  }
+  if (config.sandbox === undefined) {
+    throw new CliError(
+      "--sandbox requires a sandbox block in .trestle/config.json (set sandbox.image)",
+      EXIT_CODES.USAGE,
+      "USAGE",
+    );
+  }
+  return config.sandbox;
+}
+
 async function dispatchCommand(options, cwd) {
   const root = rootFrom(options, cwd);
   if ((options.prompt === undefined) === (options.prompt_file === undefined)) {
@@ -505,6 +566,7 @@ async function dispatchCommand(options, cwd) {
     prompt,
     requestedSkills: options.skill === undefined ? [] : Array.isArray(options.skill) ? options.skill : [options.skill],
     binary: typeof options.binary === "string" ? options.binary : undefined,
+    sandbox: resolveSandbox(options, config),
     audit,
   });
   return { ok: result.execution.ok, command: "dispatch", ...result, audit: auditSummary(audit) };
@@ -530,6 +592,7 @@ async function runCommand(options, cwd) {
   try {
     const manifest = await loadManifest(root, manifestPath);
     const config = await loadConfig(root);
+    const sandbox = resolveSandbox(options, config);
     const result = await runManifest({
       config,
       projectRoot: root,
@@ -542,6 +605,7 @@ async function runCommand(options, cwd) {
         ? { worktreeRoot: path.resolve(cwd, options.worktree_root) }
         : {}),
       ...(typeof options.binary === "string" ? { binary: options.binary } : {}),
+      ...(sandbox === undefined ? {} : { sandbox }),
     });
     return { command: "run", ...result };
   } catch (error) {
@@ -798,10 +862,10 @@ async function stateUnlockCommand(options, cwd) {
   const { scope, store } = createStateCliStore(options, cwd);
   const expectedInode = options.expected_inode === undefined
     ? undefined
-    : positiveInteger(options.expected_inode, "--expected-inode");
+    : fileIdentityInteger(options.expected_inode, "--expected-inode");
   const expectedDevice = options.expected_device === undefined
     ? undefined
-    : positiveInteger(options.expected_device, "--expected-device");
+    : fileIdentityInteger(options.expected_device, "--expected-device");
   const hasToken = typeof options.expected_token === "string" && options.expected_token.trim() !== "";
   const recovery = options.recovery === true;
   // A well-formed lock is cleared by its token. A malformed (tokenless) lock is

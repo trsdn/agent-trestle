@@ -3,6 +3,7 @@ import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { after, test } from "node:test";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
+import { POSIX_EXECUTABLE_SCRIPT_ONLY } from "../helpers/platform.mjs";
 import { createProjectDataProvider } from "../../src/dashboard/project-provider.mjs";
 import { auditRootFor } from "../../src/audit/index.mjs";
 import { EXIT_CODES, runCli } from "../../src/cli/main.mjs";
@@ -49,7 +50,7 @@ test("an empty project yields an empty but well-formed model", async () => {
   assert.equal(typeof model.generatedAt, "string");
 });
 
-test("a real run is reconstructed from the project's own audit records", async () => {
+test("a real run is reconstructed from the project's own audit records", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot, binary } = await initializedProject("real-run");
   await writeFile(path.join(projectRoot, "tasks.json"), JSON.stringify({
     version: 1,
@@ -95,7 +96,7 @@ test("a real run is reconstructed from the project's own audit records", async (
   assert.equal(model.failures.length, 0);
 });
 
-test("a failed task surfaces as a failure without hand-assembled JSON", async () => {
+test("a failed task surfaces as a failure without hand-assembled JSON", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot, binary } = await initializedProject("failed-run", "process.exit(3);");
   await writeFile(path.join(projectRoot, "tasks.json"), JSON.stringify({
     version: 1,
@@ -118,7 +119,7 @@ test("a failed task surfaces as a failure without hand-assembled JSON", async ()
   assert.equal(model.failures.some((failure) => failure.status === "failed"), true);
 });
 
-test("a standalone dispatch appears even though it has no run-level writer", async () => {
+test("a standalone dispatch appears even though it has no run-level writer", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot, binary } = await initializedProject("standalone");
   const invoked = capture(projectRoot);
   assert.equal(
@@ -138,7 +139,7 @@ test("a standalone dispatch appears even though it has no run-level writer", asy
   assert.equal(model.tasks[0].name, "example-project.main.builder");
 });
 
-test("a tampered segment is surfaced rather than thrown", async () => {
+test("a tampered segment is surfaced rather than thrown", { skip: POSIX_EXECUTABLE_SCRIPT_ONLY }, async () => {
   const { projectRoot, binary } = await initializedProject("tampered");
   const invoked = capture(projectRoot);
   assert.equal(

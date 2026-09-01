@@ -10,6 +10,7 @@ import {
   readVerifiedFile,
   releasePin,
   removeVerifiedFile,
+  isMissingDuringResolve,
   verifyDescendant,
   verifyPinnedDirectory,
 } from "../security/path-security.mjs";
@@ -93,7 +94,7 @@ async function readLockInfo(rootPin, path, securityOptions) {
     if (info && typeof info === "object" && typeof info.token === "string") return info;
     return { malformed: true, token: null };
   } catch (error) {
-    if (error.code === "ENOENT") return null;
+    if (isMissingDuringResolve(error)) return null;
     if (error.code === "PATH_TRAVERSAL") {
       // A competing holder may unlink its lock after this reader opened its
       // verified descriptor but before the pathname identity recheck. That is
@@ -103,7 +104,7 @@ async function readLockInfo(rootPin, path, securityOptions) {
         if ((await lstat(path)).isSymbolicLink()) throw error;
         return null;
       } catch (lstatError) {
-        if (lstatError.code === "ENOENT") return null;
+        if (isMissingDuringResolve(lstatError)) return null;
         throw lstatError;
       }
     }

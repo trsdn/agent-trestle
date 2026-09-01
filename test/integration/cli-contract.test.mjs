@@ -28,7 +28,7 @@ function capture(cwd = fixtureRoot) {
 test("root library exposes each stable public module", () => {
   for (const name of [
     "audit", "config", "copilot", "dashboard", "dispatch", "ownership",
-    "review", "scheduler", "state", "worktrees",
+    "review", "sandbox", "scheduler", "state", "worktrees",
   ]) {
     assert.equal(typeof library[name], "object", `${name} export`);
   }
@@ -146,6 +146,65 @@ test("merge refuses by default and states which opt-in is missing", async () => 
     EXIT_CODES.USAGE,
   );
   assert.equal(JSON.parse(badPolicy.stderr()).error.code, "INVALID_OWNERSHIP_POLICY");
+});
+
+test("--sandbox refuses to run unsandboxed when no sandbox is configured", async () => {
+  const projectRoot = path.join(scratchRoot, "sandbox-gating");
+  await rm(projectRoot, { recursive: true, force: true });
+  await mkdir(projectRoot, { recursive: true });
+  const init = capture(projectRoot);
+  assert.equal(await runCli(["init", "--json"], init.io), EXIT_CODES.SUCCESS);
+
+  const configFile = path.join(projectRoot, ".trestle", "config.json");
+  const scaffolded = JSON.parse(await readFile(configFile, "utf8"));
+  const workstream = scaffolded.workstreams[0];
+  const dispatchArgv = [
+    "dispatch",
+    "--project", scaffolded.project.id,
+    "--workstream", workstream.id,
+    "--role", workstream.roles[0].id,
+    "--prompt", "do the thing",
+    "--sandbox",
+    "--no-audit",
+    "--json",
+  ];
+
+  // Asking for containment that was never configured must fail, not silently
+  // fall back to running the agent unsandboxed.
+  const unconfigured = capture(projectRoot);
+  assert.equal(await main(dispatchArgv, unconfigured.io), EXIT_CODES.USAGE);
+  assert.match(JSON.parse(unconfigured.stderr()).error.message, /--sandbox requires a sandbox block/);
+
+  // A sandbox that could not constrain anything is rejected when config loads.
+  await writeFile(configFile, JSON.stringify({ ...scaffolded, sandbox: { image: "x", network: "host" } }));
+  const hostNetwork = capture(projectRoot);
+  assert.notEqual(await main(["validate", "--json"], hostNetwork.io), EXIT_CODES.SUCCESS);
+  assert.match(hostNetwork.stderr(), /network must be one of none, bridge/);
+
+  // A well-formed declaration validates, and still grants no Copilot permission.
+  await writeFile(configFile, JSON.stringify({
+    ...scaffolded,
+    sandbox: { image: "ghcr.io/example/copilot:1" },
+  }));
+  const accepted = capture(projectRoot);
+  assert.equal(await runCli(["validate", "--json"], accepted.io), EXIT_CODES.SUCCESS);
+  const { config } = await import("../../src/config/config.mjs")
+    .then(async (module) => ({ config: await module.loadConfig(projectRoot) }));
+  assert.equal(config.sandbox.network, "none");
+  assert.equal(config.permissions.allowAllTools, false);
+
+  // On Windows the sandbox is not optional: an unsandboxed agent cannot be
+  // spawned without a shell, and there are no process groups to bound it with,
+  // so the CLI refuses rather than running it half-contained.
+  const unsandboxed = capture(projectRoot);
+  const code = await main(dispatchArgv.filter((arg) => arg !== "--sandbox"), unsandboxed.io);
+  if (process.platform === "win32") {
+    assert.equal(code, EXIT_CODES.NOT_SUPPORTED);
+    assert.equal(JSON.parse(unsandboxed.stderr()).error.code, "SANDBOX_REQUIRED");
+  } else {
+    // Elsewhere it is allowed to proceed and fails later on the missing binary.
+    assert.notEqual(code, EXIT_CODES.NOT_SUPPORTED);
+  }
 });
 
 test("run requires an explicit manifest", async () => {

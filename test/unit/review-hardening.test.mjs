@@ -3,6 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { POSIX_MODE_BITS_ONLY } from "../helpers/platform.mjs";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
 import {
   BUILTIN_REVIEWER_AGENTS,
@@ -478,7 +479,7 @@ test("review gate treats a streaming oversize diff signal as a deterministic blo
   assert.equal(result.mergeAllowed, false);
 });
 
-test("reviewer home is a freshly created, mode-restricted, empty directory outside the reviewed repository", async () => {
+test("reviewer home is a freshly created, mode-restricted, empty directory outside the reviewed repository", { skip: POSIX_MODE_BITS_ONLY }, async () => {
   const home = await createReviewerHome();
   try {
     const info = await stat(home);
@@ -793,7 +794,7 @@ test("general-purpose is materialized as a project reviewer agent instead of tre
   }
 });
 
-test("prepareReviewerAgent materializes a sanitized custom reviewer agent under COPILOT_HOME/agents, stripping tool/mcp-server escalation and folding in skill content", async () => {
+test("prepareReviewerAgent materializes a sanitized custom reviewer agent under COPILOT_HOME/agents, stripping tool/mcp-server escalation and folding in skill content", { skip: POSIX_MODE_BITS_ONLY }, async () => {
   const projectRoot = path.join(agentDiscoveryRoot, "custom-agent");
   await rm(projectRoot, { recursive: true, force: true });
   await mkdir(path.join(projectRoot, ".github/skills/security-checklist"), { recursive: true });

@@ -7,6 +7,7 @@ import assert from "node:assert/strict";
 import { mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
+import { posixPath } from "../helpers/platform.mjs";
 import { makeScratchRoot } from "../helpers/scratch.mjs";
 import { loadConfig } from "../../src/config/config.mjs";
 import {
@@ -262,6 +263,6 @@ test("resolveSkillPaths accepts a valid real skill with no symlinks", async () =
   const paths = await resolveSkillPaths(projectRoot, ["my-skill"]);
   assert.equal(paths.length, 1);
   assert.equal(paths[0].id, "my-skill");
-  assert.match(paths[0].path, /\.github\/skills\/my-skill\/SKILL\.md$/);
+  assert.match(posixPath(paths[0].path), /\.github\/skills\/my-skill\/SKILL\.md$/);
   assert.equal(paths[0].content, SKILL_MD);
 });

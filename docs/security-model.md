@@ -1,7 +1,15 @@
 # Security model
 
-Agent Trestle is a local orchestration tool, not a sandbox. A Copilot agent can
-only be as safe as the permissions granted to its process.
+Agent Trestle is a local orchestration tool. By default it is **not** a sandbox:
+an agent is exactly as contained as the permissions granted to its process, and
+no more. `--sandbox` is the opt-in that changes that, moving containment of the
+agent into a container's mount and network namespaces — see
+[Container sandbox](#container-sandbox).
+
+Read that distinction carefully, because the rest of this document is mostly
+about a different thing. Everything below on paths, locks and audit constrains
+what *Agent Trestle itself* writes, and defends it against a hostile local user.
+Only the sandbox constrains what the *agent* can reach.
 
 ## Default-deny policy
 
@@ -125,6 +133,90 @@ requires the exact observed token or immutable identity. If the documented
 threat model includes an active parent-replacement race during that final
 window, quiesce the state directory and perform recovery manually. Live locks
 are never reclaimed automatically.
+
+## Container sandbox
+
+`--sandbox` is the only control in this document that constrains the agent
+rather than Agent Trestle. It rewrites the Copilot invocation into a container
+run, so the working directory the agent is given is enforced by a mount
+namespace instead of merely being where it was started.
+
+The rewrite happens after the Copilot argv is fully built and before anything is
+spawned, and the original command is appended last and unchanged. The existing
+process adapter therefore keeps ownership of spawning, supervision, output caps
+and prompt redaction, and the trailing `-p <prompt>` pair stays in final
+position so positional redaction still masks the right element. An invalid
+sandbox declaration fails before a process exists.
+
+Defaults deny: no network, all capabilities dropped, `no-new-privileges`, a
+bounded pid count, and the project working directory as the only mount. Host
+environment variables are passed **by name**, so a value never reaches argv,
+a process listing, or an audit record. A mounted Copilot home is read-only.
+Values that a runtime would parse as options are rejected, and a mount source
+may not smuggle extra `:`-separated fields — on Windows a drive letter is the
+only colon allowed.
+
+This is a blast-radius control, not a credential control. An agent that can use
+a mounted credential can still use it, and `network: "bridge"` — which Copilot
+CLI needs to reach its API — is the point at which egress becomes possible.
+Both are deliberate, explicit escalations rather than defaults.
+
+The full option surface is in
+[the commands reference](commands.md#container-sandbox).
+
+## Platform support
+
+Linux and macOS are supported directly. Windows is supported for agent
+execution **through the sandbox only**, and the CLI enforces that rather than
+documenting it: `dispatch` and `run` without `--sandbox` exit 3 with
+`SANDBOX_REQUIRED` there.
+
+That is not caution for its own sake. Two things are genuinely missing on
+Windows, and the container supplies both:
+
+- **A spawnable agent.** npm installs Copilot CLI as a `.cmd` shim, and Node
+  refuses to spawn `.cmd` without `shell: true` (the CVE-2024-27980
+  mitigation). A shell concatenates argv rather than escaping it, and the prompt
+  travels in argv, so the process adapters do not use one. `docker` is a real
+  executable and spawns directly.
+- **A bound on what the agent leaves behind.** `process.kill(-pid)` returns
+  `ESRCH` on Windows, so a helper an agent forks could outlive termination.
+  Inside a container the whole process tree goes with it.
+
+Two constraints remain, and both fail **closed**:
+
+- **The worktree fleet.** Secure-hold verification reads the POSIX owner and
+  mode bits of every path component, and Windows exposes no uid to build that
+  proof from, so `fleet` and `run --isolate` refuse with
+  `INSECURE_CONTAINMENT`. Reconstructing the proof from NTFS ACLs would mean a
+  security-critical parser and a subprocess per path component, to buy a
+  guarantee weaker than the refusal it replaced.
+- **Symlink-safe opens** are reconstructed rather than delegated to the kernel,
+  as described above. They detect rather than prevent, and they fail closed.
+
+Windows also implements delete-while-open by unlinking the name and parking the
+file under the NTFS metadata directory `\$Extend\$Deleted` until the last handle
+closes. `realpath` still resolves such an entry — to that reserved location —
+and during the same window can instead fail with `EPERM`, `EBADF` or `EBUSY`
+where POSIX would simply have said `ENOENT`. Path containment treats all of
+these as the deletion they are; `\$Extend` is NTFS-internal and cannot be
+written by user code, so it cannot be used to smuggle a path.
+
+### Windows via WSL2
+
+WSL2 is the supported way to run from a Windows host. It is a real Linux
+kernel, so `O_NOFOLLOW`, POSIX ownership, and process groups all behave
+natively and nothing in this document is weakened.
+
+Keep the checkout on the WSL2 filesystem (under `~`, for example), not on a
+Windows drive under `/mnt/c`. DrvFs *synthesizes* Linux metadata rather than
+translating NTFS ACLs: by default it reports every path as owned by `root` with
+mode `0777`, which secure-hold verification refuses as group/other-writable —
+the right answer, but reached for the wrong reason. Mounting with the
+`metadata` option and tightening the mode would silence that refusal without
+making it true, because the synthesized owner and mode still do not reflect the
+NTFS ACLs that actually govern access. A checkout on the native filesystem
+avoids the question entirely, and is substantially faster.
 
 ## Network boundary
 
