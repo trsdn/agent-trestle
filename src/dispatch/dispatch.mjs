@@ -3,6 +3,7 @@ import { copilotPermissionArgs } from "../config/permissions.mjs";
 import { resolveSkillPaths, selectSkills } from "../config/skills.mjs";
 import { runCopilot } from "../copilot/process-adapter.mjs";
 import { summarizeExecutionForAudit } from "../audit/recorder.mjs";
+import { describeSandbox } from "../sandbox/container.mjs";
 import { pinDirectory, releasePin } from "../security/path-security.mjs";
 import { resolveRoute, resolveWorkstreamDirectory } from "./router.mjs";
 
@@ -36,6 +37,7 @@ export async function dispatch({
   loadAgent = loadAgentDefinition,
   resolveSkills = resolveSkillPaths,
   run = runCopilot,
+  sandbox,
 } = {}) {
   const route = resolveRoute(config, { projectId, workstreamId, roleId });
   // An explicit workingDirectory isolates this dispatch in a caller-provisioned
@@ -68,6 +70,7 @@ export async function dispatch({
     agent: { id: agent.id, path: agent.path, model: agent.model },
     skills: skills.map(({ content: ignored, ...skill }) => skill),
     permissions: route.permissions,
+    sandbox: sandbox === undefined ? null : describeSandbox(sandbox),
   };
   await audit?.record("dispatch.started", {
     ...identity,
@@ -88,6 +91,7 @@ export async function dispatch({
     runner,
     spawnImpl,
     modelLogPath,
+    ...(sandbox === undefined ? {} : { sandbox }),
     ...(signal === undefined ? {} : { signal }),
   });
 

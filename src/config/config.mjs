@@ -1,5 +1,6 @@
 import path from "node:path";
 import { normalizePermissions } from "./permissions.mjs";
+import { normalizeSandbox } from "../sandbox/container.mjs";
 import { pinDirectory, readVerifiedFile, releasePin } from "../security/path-security.mjs";
 
 export const CONFIG_DIRECTORY = ".trestle";
@@ -101,7 +102,11 @@ function assertUnique(items, label) {
 
 export function validateConfig(input) {
   const config = object(input, "config");
-  assertNoUnknownKeys(config, ["version", "project", "permissions", "copilot", "workstreams"], "config");
+  assertNoUnknownKeys(
+    config,
+    ["version", "project", "permissions", "copilot", "sandbox", "workstreams"],
+    "config",
+  );
   if (config.version !== CONFIG_VERSION) {
     throw new TypeError(`config.version must be ${CONFIG_VERSION}`);
   }
@@ -133,6 +138,12 @@ export function validateConfig(input) {
       binary: copilot.binary ?? "copilot",
       timeoutMs: copilot.timeoutMs ?? 0,
     },
+    // Declaring a sandbox does not enable it. Execution stays unsandboxed until
+    // a command is invoked with --sandbox, so the escalation - and the decision
+    // not to escalate - are both explicit.
+    sandbox: config.sandbox === undefined
+      ? undefined
+      : normalizeSandbox(config.sandbox, "config.sandbox"),
     workstreams,
   };
 }

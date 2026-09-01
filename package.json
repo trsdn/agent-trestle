@@ -43,6 +43,7 @@
     "./ownership": "./src/ownership/index.mjs",
     "./review": "./src/review/index.mjs",
     "./run": "./src/run/index.mjs",
+    "./sandbox": "./src/sandbox/index.mjs",
     "./scheduler": "./src/scheduler/index.mjs",
     "./state": "./src/state/index.mjs",
     "./worktrees": "./src/worktrees/index.mjs",

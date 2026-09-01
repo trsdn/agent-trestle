@@ -103,8 +103,8 @@ Project-owned configuration is separated from reusable runtime code:
 ```
 
 Each stage is a directory under `src/`. `audit`, `config`, `copilot`,
-`dashboard`, `dispatch`, `ownership`, `review`, `scheduler`, `state` and
-`worktrees` are public subpath exports declared in `package.json`; `cli`,
+`dashboard`, `dispatch`, `ownership`, `review`, `sandbox`, `scheduler`, `state`
+and `worktrees` are public subpath exports declared in `package.json`; `cli`,
 `process` and `security` are internal. The CLI entry point is
 `src/cli/agent-trestle.mjs`.
 

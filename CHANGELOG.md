@@ -12,6 +12,16 @@ are not yet stable and may change without a major version bump.
 
 ### Added
 
+- Added an opt-in container sandbox for agent execution. `--sandbox` on
+  `dispatch` and `run` rewrites the Copilot invocation into a container run, so
+  the agent is contained by a mount and network namespace rather than by the
+  working directory it happens to be started in. A closed `config.sandbox`
+  block declares the image and limits; declaring it does not enable it, and
+  `--sandbox` without it is a usage error rather than a silent unsandboxed run.
+  Defaults deny: no network, `--cap-drop ALL`, `no-new-privileges`, a bounded
+  pid count, the working directory as the only mount, host environment passed
+  by name so values never reach argv, and a read-only Copilot home. Exposed as
+  the `./sandbox` subpath export.
 - Added a CodeQL workflow for JavaScript and TypeScript analysis on pushes,
   pull requests, a weekly schedule, and manual runs.
 - Added `agent-trestle run --manifest FILE`, a closed versioned task-manifest

@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { superviseChildProcess } from "../process/live-child-supervisor.mjs";
+import { buildContainerCommand, describeSandbox, normalizeSandbox } from "../sandbox/container.mjs";
 
 // Default per-stream byte cap for a Copilot invocation. Generous enough for a
 // real agent transcript, but bounded so a runaway or adversarial process can
@@ -315,6 +316,7 @@ export async function runCopilot({
   modelLogPath,
   readFileImpl = readFile,
   signal,
+  sandbox = null,
 } = {}) {
   if (typeof prompt !== "string" || prompt.trim() === "") throw new TypeError("prompt must be non-empty text");
   if (typeof agent !== "string" || agent.trim() === "") throw new TypeError("agent must be an explicit agent ID");
@@ -325,6 +327,17 @@ export async function runCopilot({
   const commandArgs = ["--agent", agent];
   if (model) commandArgs.push("--model", model);
   commandArgs.push(...args, "-p", prompt);
+
+  // Opt-in containment. The rewrite happens here, after the Copilot argv is
+  // fully built and before anything is spawned, so the sandbox inherits the
+  // adapter's supervision, output caps and redaction rather than duplicating
+  // them. With no sandbox declared the invocation is byte-for-byte unchanged.
+  const activeSandbox = sandbox === null || sandbox === undefined
+    ? null
+    : normalizeSandbox(sandbox, "sandbox");
+  const invocation = activeSandbox === null
+    ? { binary, args: commandArgs }
+    : buildContainerCommand({ binary, args: commandArgs, cwd, sandbox: activeSandbox });
 
   const execute = runner ?? ((spec) => spawnProcess(spec.binary, spec.args, {
     cwd: spec.cwd,
@@ -341,8 +354,8 @@ export async function runCopilot({
   let processResult;
   try {
     processResult = await execute({
-      binary,
-      args: commandArgs,
+      binary: invocation.binary,
+      args: invocation.args,
       cwd,
       env,
       timeoutMs,
@@ -380,8 +393,9 @@ export async function runCopilot({
 
   const safeProcessResult = redactResult(processResult, prompt);
   return buildResult(safeProcessResult, {
-    command: binary,
-    args: redactArgs(commandArgs),
+    command: invocation.binary,
+    args: redactArgs(invocation.args),
+    ...(activeSandbox === null ? {} : { sandbox: describeSandbox(activeSandbox) }),
     startedAt,
     finishedAt: new Date().toISOString(),
   }, diagnostics);

@@ -22,8 +22,10 @@ Unknown options are rejected with exit code 2 *before* any command side effect.
 - `agent-trestle resolve --project ID --workstream ID --role ID`
 - `agent-trestle dispatch --project ID --workstream ID --role ID
   (--prompt TEXT | --prompt-file FILE) [--skill ID ...] [--binary PATH]
-  [--no-audit]`
-  where `--binary` overrides `config.copilot.binary` for this invocation.
+  [--sandbox] [--no-audit]`
+  where `--binary` overrides `config.copilot.binary` for this invocation and
+  `--sandbox` runs the agent inside the configured container sandbox. See
+  [Container sandbox](#container-sandbox).
 - `agent-trestle review --base REF --head REF --producer ID --reviewer ID
   [--attempts N] [--timeout-ms MS] [--no-audit]`
   runs a read-only exact-diff gate. `--attempts` defaults to 1 and
@@ -68,7 +70,7 @@ Unknown options are rejected with exit code 2 *before* any command side effect.
   and the operator must quiesce the state directory if the final syscall window
   is in the threat model.
 - `agent-trestle run --manifest FILE [--concurrency N] [--binary PATH]
-  [--isolate] [--worktree-root PATH] [--no-audit]`
+  [--isolate] [--worktree-root PATH] [--sandbox] [--no-audit]`
   executes a task manifest: a dependency-ordered graph of agent dispatches.
   See [Task manifests](#task-manifests) below.
 
@@ -313,3 +315,69 @@ mutable namespace must be declared in the `--schemas` registry; see
   `git` runs, so a root-replacement race cannot redirect a write or deletion
   outside the pinned root. Relocate `--worktree-root` under a directory you own
   that is not writable by others to re-enable it.
+
+## Container sandbox
+
+`--sandbox` runs the agent inside a container instead of as a direct child of
+this process. Where the rest of this document constrains what *Agent Trestle*
+writes, this constrains what the *agent* can reach: containment becomes a
+property of the kernel's mount and network namespaces rather than of a working
+directory the agent is merely pointed at.
+
+It is off by default, and declaring a sandbox does not enable one. `--sandbox`
+enables it, and asking for it without a `sandbox` block in
+`.trestle/config.json` is a usage error (exit 2) rather than a silent fall back
+to running unsandboxed.
+
+```json
+{
+  "sandbox": {
+    "image": "ghcr.io/example/copilot:1",
+    "runtime": "docker",
+    "network": "none",
+    "pidsLimit": 512,
+    "memory": "2g",
+    "cpus": "2",
+    "env": ["HTTPS_PROXY"],
+    "copilotHome": "/home/dev/.copilot"
+  }
+}
+```
+
+Only `image` is required. The block is closed, like the rest of the config
+schema: an unknown key fails rather than silently failing to constrain
+anything.
+
+Every invocation gets `--rm`, `--cap-drop ALL`,
+`--security-opt no-new-privileges`, a `--pids-limit`, the project working
+directory bind-mounted at `/work` as the only mount, and `--workdir /work`. On
+POSIX the container also runs as the invoking uid/gid so agent output is not
+left root-owned on the host.
+
+Defaults deny, and each escalation is separately visible:
+
+| Key | Default | Escalation |
+| --- | --- | --- |
+| `network` | `none` | `bridge` grants egress. Copilot CLI needs it to reach the API, so a real run is an explicit choice, not an accident. |
+| `env` | `[]` | Named host variables are passed **by name**, so a value never reaches argv or an audit record. |
+| `copilotHome` | unset | Mounted read-only at `/copilot-home`. |
+| `runtime` | `docker` | `podman` is also accepted. `host` networking is not accepted at all. |
+
+The sandbox is recorded in `dispatch.started` and returned on the execution
+result, so an audit reader can tell a sandboxed run from an unsandboxed one and
+see exactly what it granted.
+
+### What this does and does not protect
+
+A container bounds the *blast radius* of a misbehaving agent: it cannot read
+your home directory, and with `network: "none"` it cannot reach anything at
+all. That is what makes `permissions.allowAllTools` a reasonable thing to grant.
+
+It does not make credentials safe. An agent that can use a mounted Copilot
+credential can still use it, whatever the filesystem boundary. Prefer a
+short-lived credential, and treat `network: "bridge"` as the point at which
+egress becomes possible.
+
+A container is also not a security boundary against a kernel exploit. It is a
+large improvement over a working directory, not a guarantee.
+

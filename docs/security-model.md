@@ -1,7 +1,15 @@
 # Security model
 
-Agent Trestle is a local orchestration tool, not a sandbox. A Copilot agent can
-only be as safe as the permissions granted to its process.
+Agent Trestle is a local orchestration tool. By default it is **not** a sandbox:
+an agent is exactly as contained as the permissions granted to its process, and
+no more. `--sandbox` is the opt-in that changes that, moving containment of the
+agent into a container's mount and network namespaces — see
+[Container sandbox](#container-sandbox).
+
+Read that distinction carefully, because the rest of this document is mostly
+about a different thing. Everything below on paths, locks and audit constrains
+what *Agent Trestle itself* writes, and defends it against a hostile local user.
+Only the sandbox constrains what the *agent* can reach.
 
 ## Default-deny policy
 
@@ -125,6 +133,36 @@ requires the exact observed token or immutable identity. If the documented
 threat model includes an active parent-replacement race during that final
 window, quiesce the state directory and perform recovery manually. Live locks
 are never reclaimed automatically.
+
+## Container sandbox
+
+`--sandbox` is the only control in this document that constrains the agent
+rather than Agent Trestle. It rewrites the Copilot invocation into a container
+run, so the working directory the agent is given is enforced by a mount
+namespace instead of merely being where it was started.
+
+The rewrite happens after the Copilot argv is fully built and before anything is
+spawned, and the original command is appended last and unchanged. The existing
+process adapter therefore keeps ownership of spawning, supervision, output caps
+and prompt redaction, and the trailing `-p <prompt>` pair stays in final
+position so positional redaction still masks the right element. An invalid
+sandbox declaration fails before a process exists.
+
+Defaults deny: no network, all capabilities dropped, `no-new-privileges`, a
+bounded pid count, and the project working directory as the only mount. Host
+environment variables are passed **by name**, so a value never reaches argv,
+a process listing, or an audit record. A mounted Copilot home is read-only.
+Values that a runtime would parse as options are rejected, and a mount source
+may not smuggle extra `:`-separated fields — on Windows a drive letter is the
+only colon allowed.
+
+This is a blast-radius control, not a credential control. An agent that can use
+a mounted credential can still use it, and `network: "bridge"` — which Copilot
+CLI needs to reach its API — is the point at which egress becomes possible.
+Both are deliberate, explicit escalations rather than defaults.
+
+The full option surface is in
+[the commands reference](commands.md#container-sandbox).
 
 ## Platform support
 

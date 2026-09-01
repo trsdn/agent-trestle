@@ -80,12 +80,12 @@ const COMMAND_OPTION_SPECS = Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
     project: VALUE, workstream: VALUE, role: VALUE,
     prompt: VALUE, prompt_file: VALUE, skill: VALUE_REPEATABLE, binary: VALUE,
-    no_audit: BOOL,
+    no_audit: BOOL, sandbox: BOOL,
   }),
   run: Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
     manifest: VALUE, concurrency: VALUE, binary: VALUE, no_audit: BOOL,
-    isolate: BOOL, worktree_root: VALUE,
+    isolate: BOOL, worktree_root: VALUE, sandbox: BOOL,
   }),
   review: Object.freeze({
     help: BOOL, version: BOOL, json: BOOL, root: VALUE,
@@ -378,6 +378,8 @@ Commands:
 Global options:
   --root <path> Project root (default: current directory)
   --json        Emit machine-readable output where the command terminates
+  --sandbox     Run agents inside the configured container sandbox
+                (dispatch, run). Requires a sandbox block in config.
   --help        Show this help
   --version     Show package version
 
@@ -477,6 +479,24 @@ async function doctorCommand(options, cwd) {
   return { ok, command: "doctor", projectRoot: root, checks };
 }
 
+/**
+ * Declaring a sandbox in config does not enable it: --sandbox does. Asking for
+ * containment that was never configured is a usage error rather than a silent
+ * fall back to running unsandboxed, which would be the one failure mode this
+ * flag exists to prevent.
+ */
+function resolveSandbox(options, config) {
+  if (options.sandbox !== true) return undefined;
+  if (config.sandbox === undefined) {
+    throw new CliError(
+      "--sandbox requires a sandbox block in .trestle/config.json (set sandbox.image)",
+      EXIT_CODES.USAGE,
+      "USAGE",
+    );
+  }
+  return config.sandbox;
+}
+
 async function dispatchCommand(options, cwd) {
   const root = rootFrom(options, cwd);
   if ((options.prompt === undefined) === (options.prompt_file === undefined)) {
@@ -505,6 +525,7 @@ async function dispatchCommand(options, cwd) {
     prompt,
     requestedSkills: options.skill === undefined ? [] : Array.isArray(options.skill) ? options.skill : [options.skill],
     binary: typeof options.binary === "string" ? options.binary : undefined,
+    sandbox: resolveSandbox(options, config),
     audit,
   });
   return { ok: result.execution.ok, command: "dispatch", ...result, audit: auditSummary(audit) };
@@ -530,6 +551,7 @@ async function runCommand(options, cwd) {
   try {
     const manifest = await loadManifest(root, manifestPath);
     const config = await loadConfig(root);
+    const sandbox = resolveSandbox(options, config);
     const result = await runManifest({
       config,
       projectRoot: root,
@@ -542,6 +564,7 @@ async function runCommand(options, cwd) {
         ? { worktreeRoot: path.resolve(cwd, options.worktree_root) }
         : {}),
       ...(typeof options.binary === "string" ? { binary: options.binary } : {}),
+      ...(sandbox === undefined ? {} : { sandbox }),
     });
     return { command: "run", ...result };
   } catch (error) {
