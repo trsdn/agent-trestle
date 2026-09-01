@@ -384,10 +384,12 @@ Commands:
 Global options:
   --root <path> Project root (default: current directory)
   --json        Emit machine-readable output where the command terminates
-  --sandbox     Run agents inside the configured container sandbox
-                (dispatch, run). Requires a sandbox block in config.
   --help        Show this help
   --version     Show package version
+
+dispatch and run also accept:
+  --sandbox     Run the agent inside the container sandbox declared by
+                config.sandbox. Off by default; refuses if none is declared.
 
 ${identity.name} ${identity.version} (${identity.license})
 Project:      ${identity.repository}
