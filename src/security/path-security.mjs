@@ -358,7 +358,10 @@ const EMULATED_RETRY_MS = 2;
 const EMULATED_RETRY_CAP_MS = 50;
 
 function sleep(ms) {
-  return new Promise((resolve) => { setTimeout(resolve, ms).unref?.(); });
+  // Deliberately not unref'd: this runs in the middle of an open that has
+  // already been committed to, so the process must stay alive to finish it
+  // rather than exiting and leaving the caller's promise unsettled.
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
 }
 
 /**
