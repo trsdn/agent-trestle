@@ -18,8 +18,11 @@ GitHub advisory intake.
 ## Development setup
 
 Requirements: Node.js ≥ 20 (use `.nvmrc` for the recommended version), Git, and
-the GitHub Copilot CLI on your `PATH`. Linux or macOS — the worktree fleet
-requires POSIX ownership semantics and fails closed on Windows.
+the GitHub Copilot CLI on your `PATH`. Linux or macOS — Windows is refused at
+install time by `"os": ["!win32"]`, because audit and state writes require
+`O_NOFOLLOW`, the worktree fleet requires POSIX ownership semantics, and
+process-group termination has no Windows equivalent. See
+[platform support](docs/security-model.md#platform-support).
 
 ```bash
 git clone https://github.com/trsdn/agent-trestle.git

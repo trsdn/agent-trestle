@@ -76,6 +76,13 @@ are not yet stable and may change without a major version bump.
 
 ### Changed
 
+- Documented why Windows is unsupported in terms of the actual constraints
+  rather than the worktree fleet alone: the package refuses to install there
+  (`"os": ["!win32"]`, `EBADPLATFORM`), audit and state writes need
+  `O_NOFOLLOW`, secure-hold verification needs POSIX ownership, and
+  process-group termination has no Windows equivalent and would degrade open.
+  Added a `Platform support` section to the security model and pointed the
+  README, `CONTRIBUTING.md`, and `AGENTS.md` requirement notes at it.
 - Renamed `test/helpers/scratch` to `test/helpers/scratch.mjs` and gave every
   importer the explicit extension. The extensionless file resolved, but relied
   on the loader inferring a module type it had no extension to declare.

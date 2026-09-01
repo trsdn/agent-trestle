@@ -22,8 +22,11 @@ Consequences an agent must not get wrong:
 - Adding any dependency is a reviewable decision with its own bar; see
   [the zero-dependency rule](CONTRIBUTING.md#the-zero-dependency-rule).
 
-Requirements: Node.js ≥ 20 (`.nvmrc` pins 22), Git, Linux or macOS. The
-worktree fleet needs POSIX ownership semantics and fails closed on Windows.
+Requirements: Node.js ≥ 20 (`.nvmrc` pins 22), Git, Linux or macOS. Windows is
+refused at install time by `"os": ["!win32"]` in `package.json`: audit and state
+writes require `O_NOFOLLOW`, the worktree fleet requires POSIX ownership
+semantics, and process-group termination has no Windows equivalent. See
+[platform support](docs/security-model.md#platform-support).
 `npm link` exposes the `agent-trestle` binary locally.
 
 ## Commands
@@ -51,8 +54,10 @@ build, and it is already part of `check`.
 [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs the same commands as
 four jobs: `Lint`, `Test` across a matrix of Node 20 and 22 on
 `ubuntu-latest` and `macos-latest`, `Package` (`npm pack --dry-run`), and
-`Coverage`. Windows is excluded on purpose — the worktree fleet requires POSIX
-ownership semantics and fails closed there. Coverage thresholds run only on the
+`Coverage`. Windows is excluded on purpose — the package refuses to install
+there at all (`"os": ["!win32"]`), and the POSIX primitives behind audit, state,
+the worktree fleet and process-group termination have no Windows equivalent.
+Coverage thresholds run only on the
 `.nvmrc` runtime, because the built-in threshold flags need Node 22 while the
 suite itself must still pass on the Node 20 floor. So `npm run check` locally
 plus Node 20 compatibility is what CI will hold you to.

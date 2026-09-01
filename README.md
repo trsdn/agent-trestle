@@ -44,8 +44,11 @@ problems that a prompt cannot solve:
 - **Node.js ≥ 20** (developed and CI-tested on 20 and 22)
 - **Git**
 - **GitHub Copilot CLI** on your `PATH`
-- **Linux or macOS.** The worktree fleet requires POSIX ownership semantics and
-  fails closed on Windows.
+- **Linux or macOS.** Windows is refused at install time: `package.json`
+  declares `"os": ["!win32"]`, so npm exits with `EBADPLATFORM`. Audit and state
+  writes require `O_NOFOLLOW`, the worktree fleet requires POSIX ownership
+  semantics, and process-group termination has no Windows equivalent — see
+  [platform support](docs/security-model.md#platform-support).
 
 ## Install
 

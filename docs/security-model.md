@@ -126,6 +126,36 @@ threat model includes an active parent-replacement race during that final
 window, quiesce the state directory and perform recovery manually. Live locks
 are never reclaimed automatically.
 
+## Platform support
+
+Linux and macOS are the supported platforms. `package.json` declares
+`"os": ["!win32"]`, so npm refuses a Windows install outright with
+`EBADPLATFORM` rather than letting the constraint surface part-way through a
+run.
+
+The constraint is broader than the worktree fleet. Three of the guarantees in
+this document rest on POSIX primitives that Windows does not provide:
+
+- **Symlink-safe opens.** Audit and state writes open their target with
+  `O_NOFOLLOW`, so a symlink swapped in at the path is refused by the kernel
+  instead of followed. Where the flag does not exist the open fails closed with
+  `UNSUPPORTED_PLATFORM`, which takes out audit recording and the state store —
+  so *every* command loses the guarantee, not only `run --isolate`.
+- **Ownership proof.** Secure-hold verification reads the POSIX owner and mode
+  bits of every path component. Without `process.getuid` that proof cannot be
+  constructed, so the fleet fails closed with `INSECURE_CONTAINMENT`.
+- **Process-group termination.** Copilot, reviewer, and Git children are spawned
+  detached and signalled as a process group, so a hook or helper they fork
+  cannot outlive termination. Windows has no equivalent, so only the direct
+  child can be signalled.
+
+The first two fail **closed**, which is the correct outcome but leaves little
+that still runs. The third degrades **open**: a forked helper could survive a
+cancelled or timed-out run. A platform on which a containment guarantee silently
+weakens contradicts the fail-closed rule the rest of this document depends on,
+so the platform is refused at install time instead of being partially
+supported.
+
 ## Network boundary
 
 The dashboard CLI exposes no `--host` flag and therefore always binds
