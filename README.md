@@ -1,9 +1,10 @@
 # Agent Trestle
 
+[![License](https://img.shields.io/github/license/trsdn/agent-trestle)](LICENSE)
+[![Node.js](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fraw.githubusercontent.com%2Ftrsdn%2Fagent-trestle%2Fmain%2Fpackage.json&query=%24.engines.node&label=node&color=brightgreen)](package.json)
 [![CI](https://github.com/trsdn/agent-trestle/actions/workflows/ci.yml/badge.svg)](https://github.com/trsdn/agent-trestle/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Node.js](https://img.shields.io/badge/node-%E2%89%A520-brightgreen.svg)](package.json)
-[![Dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen.svg)](THIRD_PARTY_NOTICES.md)
+[![Release](https://img.shields.io/github/v/release/trsdn/agent-trestle?include_prereleases&sort=semver)](https://github.com/trsdn/agent-trestle/releases)
+[![trsdn standard](.github/badges/conformance.svg)](.github/conformance.yml)
 
 **Local-first orchestration for GitHub Copilot CLI agents.**
 
@@ -17,9 +18,10 @@ no npm dependency tree — only Node.js built-ins plus the `git` and Copilot CLI
 executables you already have installed.
 
 > [!NOTE]
-> **Project status: pre-release (`0.2.0`).** The command surface is
-> functional but not yet API-stable. `run` and CLI-driven review merge are
-> deliberately unimplemented and exit with `NOT_SUPPORTED`.
+> **Project status: pre-release.** The command surface is functional but not yet
+> API-stable; see the release badge above for the current version. `run` and
+> CLI-driven review merge are deliberately unimplemented and exit with
+> `NOT_SUPPORTED`.
 
 ---
 
@@ -173,6 +175,7 @@ Read [SECURITY.md](SECURITY.md) for the reporting process and
 | [Provenance audit](docs/provenance-audit.md) | Findings of the targeted audit |
 | [Name clearance](docs/name-clearance.md) | Why the binary is named `agent-trestle` |
 | [Downstream migration](docs/downstream-migration.md) | Golden-diff contract for the first external consumer |
+| [Self-assessment](docs/self-assessment.md) | Per-criterion evidence for the repository standard conformance record |
 
 ## Development
 
@@ -188,6 +191,102 @@ There is no ESLint or Prettier by design — see
 in [`scripts/lint.mjs`](scripts/lint.mjs) using only Node built-ins.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
+
+## Privacy and data protection
+
+Agent Trestle collects nothing. There is no telemetry, no analytics, and no
+crash reporting — not disabled by default, but absent from the codebase.
+
+**Outbound network destinations.** Agent Trestle itself opens exactly one
+socket: the dashboard listener, bound to `127.0.0.1` and reachable only from
+your machine. It makes no outbound request of its own. The two processes it
+launches do talk to the network on your behalf:
+
+| Process | Destination | Purpose |
+| --- | --- | --- |
+| `git` | Whatever remotes your repository configures | Fetch, push, worktree operations you invoke |
+| GitHub Copilot CLI | GitHub and the model providers GitHub routes to | Executes the prompt you dispatched |
+
+Prompts, and whatever repository content an agent chooses to read while
+answering them, are therefore sent to GitHub and its model providers by the
+Copilot CLI, under GitHub's terms — not by Agent Trestle. Copilot URL access is
+disabled unless a policy explicitly enables it.
+
+**Where data is stored.** Everything is a file under your project root, so you
+can inspect, back up, or delete it with ordinary tools:
+
+| Path | Contents |
+| --- | --- |
+| `.trestle/config.json` | Project configuration you wrote |
+| `.trestle/config/` | Resolved configuration artifacts |
+| `.trestle/state/project/`, `.trestle/state/workstreams/<id>/` | File-backed workstream state |
+| Audit root (an explicit absolute path you pass) | Per-run, per-writer audit segments |
+
+**Retention.** Nothing expires on its own and nothing is uploaded. State and
+audit records live until you delete the directory; `fleet prune` removes
+worktrees, and removing `.trestle/state` discards state. Audit segments are
+retained deliberately, because a tamper-evident record that silently expires is
+not a record.
+
+Logs and error output are redacted before they are written — see
+[the security model](docs/security-model.md).
+
+## Accessibility
+
+- **The CLI emits plain text.** No ANSI colour, no cursor control, and no
+  Unicode decoration is written to `stdout` or `stderr`, so output stays usable
+  in a screen reader, a pipe, a log file, and a terminal without colour
+  support. `--json` gives the same information in a machine-readable shape.
+  Meaning is carried by words and by stable exit codes, never by colour.
+- **The dashboard is keyboard-operable.** It is a static, read-only document
+  with no custom widgets: a skip link is the first focusable element, focus
+  order follows the document, and focus indicators are the platform defaults
+  plus an explicit style on navigation links.
+- **The dashboard exposes names and roles.** Landmarks (`header`, `nav`,
+  `main`, `footer`), `aria-labelledby` on every section, `aria-label` on card
+  lists, `role="status"` on empty states, and a `lang` attribute on the
+  document.
+- **Text scales and contrast is deliberate.** Sizing is in `rem` so platform
+  text-size settings apply, layout reflows below 35rem, and light and dark
+  palettes are both defined. Run status is a coloured badge *containing the
+  status word*, so no state is conveyed by colour alone.
+- **Known limitations.** The accessibility of the dashboard is covered by
+  automated regression tests over the rendered markup, not by an audit with
+  assistive technology. Contrast ratios were chosen by inspection and have not
+  been measured against WCAG thresholds by a tool.
+
+## Language
+
+The primary user-facing language is **English**, and it is the only language
+supported. Agent Trestle ships no message catalogs and no locale negotiation;
+CLI output, the dashboard, error codes, and documentation are English-only.
+Timestamps are emitted as ISO 8601 rather than locale-formatted, because they
+are an interchange format read by machines as often as by people.
+
+Contributor surfaces — code, comments, identifiers, commit messages, issues,
+pull requests, and release notes — are English as well.
+
+## Repository activity
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/trsdn/agent-trestle/stats/.github/stats/repo-card-dark.svg">
+  <img alt="Repository statistics for trsdn/agent-trestle" src="https://raw.githubusercontent.com/trsdn/agent-trestle/stats/.github/stats/repo-card.svg">
+</picture>
+
+The card is generated on a schedule by
+[`.github/workflows/stats.yml`](.github/workflows/stats.yml) and committed to
+the `stats` branch. No third-party statistics service renders it.
+
+## Repository standard
+
+This repository is assessed against the
+[trsdn Repository Quality Standard](https://github.com/trsdn/.github/blob/main/docs/repository-quality-standard.md).
+The result is recorded in [`.github/conformance.yml`](.github/conformance.yml),
+the badge above is generated from that record, and
+[docs/self-assessment.md](docs/self-assessment.md) holds the per-criterion
+evidence. [`.github/workflows/conformance.yml`](.github/workflows/conformance.yml)
+fails the build if record and badge disagree, or if the assessment ages past the
+review cadence.
 
 ## Provenance
 

@@ -1,0 +1,23 @@
+# Repository-scoped configuration for the GitHub Copilot app.
+#
+# This file deliberately delegates rather than restates: AGENTS.md is the single
+# home for agent-facing instructions, and duplicating it here would let the two
+# drift apart.
+
+instructions: |
+  Read AGENTS.md in the repository root before making any change. It is the
+  authoritative source for layout, commands, forbidden operations and review
+  expectations, and this file must never restate or contradict it.
+
+# No setup script: Agent Trestle has zero npm dependencies, so a clean checkout
+# is immediately runnable and `npm ci` fails by design.
+scripts:
+  - name: Validate
+    command: npm run check
+
+automation:
+  # Issue context is useful and local-only.
+  auto_issue_session: true
+  # Sessions orchestrate agents against local worktrees; remote control would
+  # widen that blast radius beyond the machine the operator is sitting at.
+  remote_control: false
