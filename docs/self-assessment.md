@@ -7,10 +7,36 @@ that record and cannot disagree with it.
 
 | | |
 | --- | --- |
-| Standard | [trsdn Repository Quality Standard v1.7.0](https://github.com/trsdn/.github/blob/v1.7.0/docs/repository-quality-standard.md) |
-| Assessed on | 2026-09-01 |
-| State | Healthy |
+| Standard | [trsdn Repository Quality Standard v1.21.0](https://github.com/trsdn/.github/blob/v1.21.0/docs/repository-quality-standard.md) |
+| Assessed on | 2026-09-22 |
+| State | Needs work |
 | Method | Self-assessment by inspection of the repository, its GitHub settings, and a local run of `npm run check` |
+
+Reassessed against v1.21.0 on 2026-09-22, jumping from v1.7.0. Thirteen
+criteria are new since v1.7.0 (`B14`-`B16`, `P10`-`P13`, `R08`-`R09`,
+`S11`-`S13`); `R07` was already assessed at v1.7.0. This assessment reads
+every criterion in the current standard, not a diff.
+
+Two findings changed a result:
+
+- **`P09` moves from `partial` to `pass`.** The shared `repo-stats.yml`
+  reusable workflow checks out `inputs.branch` directly and cannot create it
+  when it does not exist yet, so every run of `stats.yml` since it was added
+  had failed at the checkout step — not "hasn't run yet" as the v1.7.0 record
+  read it, but failing daily. This assessment bootstrapped the `stats` branch
+  with an empty commit and dispatched the workflow, which then completed and
+  populated `.github/stats/repo-card.svg` and `repo-card-dark.svg`. The
+  underlying defect is in the shared workflow published by `trsdn/.github`
+  and is reported there, not fixed here.
+- **`P13` is `fail`.** [`.github/workflows/codeql.yml`](../.github/workflows/codeql.yml)
+  exists and covers JavaScript/TypeScript, but `gh api
+  repos/trsdn/agent-trestle/actions/workflows` reports its state as
+  `disabled_manually`, set 2026-09-21, and no CodeQL default setup is
+  configured (`gh api .../code-scanning/default-setup` reports
+  `not-configured`). A disabled workflow file does not count as scanning.
+  Re-enabling a workflow is a repository setting this assessment is not
+  authorised to change; `gh workflow enable codeql.yml` is a one-command fix
+  for the maintainer.
 
 Results use the standard's vocabulary: `pass`, `partial`, `fail`, `na`,
 `unknown`. Every criterion in the catalog appears, including the ones that do
@@ -53,6 +79,9 @@ Not applicable:
 | B11 | pass | This document and [`.github/conformance.yml`](../.github/conformance.yml), validated in CI by [`.github/workflows/conformance.yml`](../.github/workflows/conformance.yml). |
 | B12 | pass | The `trsdn-standard` topic is set on the repository. |
 | B13 | pass | Each fact has one home and the others link to it: the security model lives in `docs/security-model.md`, the command surface in `docs/commands.md`, the contribution bar in `CONTRIBUTING.md`, and `AGENTS.md` explicitly links rather than restates. |
+| B14 | pass | `AGENTS.md` **Secrets** now names the one credential this repository references, `STATS_TOKEN` (optional, not currently configured), states what replaces it and where, and states that npm publishing needs no credential at all because it authenticates through OIDC. |
+| B15 | na | `THIRD_PARTY_NOTICES.md` states plainly that no third-party source code is incorporated; the package has zero npm dependencies. |
+| B16 | pass | `gh api repos/trsdn/agent-trestle/branches/main/protection` shows both force pushes and deletion blocked. |
 
 ## Public Repositories
 
@@ -66,7 +95,11 @@ Not applicable:
 | P06 | pass | `LICENSE`, `README.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue templates and a pull-request template are all in GitHub-recognised locations. |
 | P07 | pass | Description, eight topics, and a homepage pointing at the README. |
 | P08 | pass | Badge block is license, runtime, CI, release, conformance, in that order. Each links to what it reports. License and release are derived live from the repository; the runtime badge reads `engines.node` from `package.json` itself; CI is GitHub's own first-party image; conformance is a committed SVG regenerated from the record by a repository event, which the standard permits. No badge restates a hand-maintained value. |
-| P09 | partial | [`.github/workflows/stats.yml`](../.github/workflows/stats.yml) adopts the shared reusable workflow, renders light and dark SVGs, commits them to the `stats` branch, and the README embeds them through a `<picture>` element with no third-party image service. Recorded as `partial` rather than `pass` because at the time of assessment the workflow has not yet completed its first run on the default branch, so the card it references does not exist yet. This resolves to `pass` on the first scheduled run after merge. |
+| P09 | pass | [`.github/workflows/stats.yml`](../.github/workflows/stats.yml) adopts the shared reusable workflow, renders light and dark SVGs, commits them to the `stats` branch, and the README embeds them through a `<picture>` element with no third-party image service. The workflow had failed on every run since it was added because the checkout step cannot create a target branch that does not exist; this assessment bootstrapped the `stats` branch and dispatched the workflow, which completed successfully and populated `repo-card.svg` and `repo-card-dark.svg`. See the finding at the top of this document. |
+| P10 | pass | [`bug_report.yml`](../.github/ISSUE_TEMPLATE/bug_report.yml) collects what happened and what was expected, numbered reproduction commands, command output, the Agent Trestle version, and the environment (`node --version`, `git --version`, OS). |
+| P11 | pass | [`pull_request_template.md`](../.github/pull_request_template.md) covers the summary, related issues, type of change, a validation checklist (`npm run check`, tests, least-privilege defaults, `THIRD_PARTY_NOTICES.md`), and a dedicated security-impact section. |
+| P12 | pass | `gh api repos/trsdn/agent-trestle/vulnerability-alerts` and `automated-security-fixes` both enabled. |
+| P13 | fail | [`codeql.yml`](../.github/workflows/codeql.yml) exists and covers JavaScript/TypeScript, but `gh api repos/trsdn/agent-trestle/actions/workflows` reports its state as `disabled_manually` (since 2026-09-21), and CodeQL default setup is `not-configured`. A disabled workflow does not count as scanning under `P13`'s own rule. Remediation: `gh workflow enable codeql.yml`, a repository-setting change this assessment does not make. |
 
 ## Software Repositories
 
@@ -82,6 +115,9 @@ Not applicable:
 | S08 | pass | [`.github/dependabot.yml`](../.github/dependabot.yml) covers GitHub Actions, Dependabot security updates are enabled, and `CODEOWNERS` gives the alerts an owner. There is no npm dependency surface to triage. |
 | S09 | pass | Branch protection on `main` requires the six checks that exist, requires the branch to be current, and blocks force pushes and deletion. |
 | S10 | pass | [`docs/architecture.md`](architecture.md) states the runtime boundaries; [`docs/security-model.md`](security-model.md) states the invariants that explain why the code is shaped as it is. Non-obvious constraints — no hash chain but per-writer segments, fail-closed containment, no CLI merge path — are each written down with their reason. |
+| S11 | pass | All five workflows (`ci.yml`, `codeql.yml`, `conformance.yml`, `release.yml`, `stats.yml`) declare a `permissions` block, at the top level or on every job, no broader than the job's work — `publish-npm` alone holds `id-token: write`, and `stats` alone holds `contents: write`. |
+| S12 | pass | All 20 `uses:` references across the five workflows are pinned to a commit SHA (third-party actions) or reference a workflow within the account, satisfying the graduated table. |
+| S13 | na | No workflow uses `pull_request_target` or `workflow_run`. |
 
 ## Deployable Repositories
 
@@ -101,6 +137,8 @@ project root, which the Data Protection section covers.
 | R05 | pass | The release `verify` job installs the packed tarball into a clean consumer and asserts the installed CLI reports the tagged version. `test/integration/package-install.test.mjs` covers the same property in CI. |
 | R06 | pass | Release notes are the changelog section for the version, which describes behavioural changes and upgrade concerns. |
 | R07 | pass | `scripts/release.mjs notes --tag vX.Y.Z` emits that section and the release job fails when it is missing, empty, or still held under `Unreleased`. |
+| R08 | pass | `publish-npm` holds `id-token: write` and no npm token is stored in the repository (`gh secret list` returns none); publishing goes through npm trusted publishing, deriving provenance from the workflow's OIDC identity. `AGENTS.md` documents that `--provenance` is deliberately not passed, and that a final workflow step asserts the published version carries an attestation and fails the release otherwise, so the attestation can only have come from OIDC. Not independently re-verified against the registry: this sandbox's npm client has remote package fetches disabled (`EALLOWREMOTE`). |
+| R09 | pass | Secret scan: GitHub secret scanning is enabled and `gh api repos/trsdn/agent-trestle/secret-scanning/alerts?state=open` returns none. Dependency check: not applicable, zero third-party dependencies; `gh api repos/trsdn/agent-trestle/dependabot/alerts?state=open` returns none regardless. |
 
 ## Product Identity
 
@@ -120,10 +158,14 @@ documentation under `docs/` supports it and is held to `S10` and `B13` instead.
 
 ## Published Sites
 
-`W01` through `W08` are recorded `na`. Nothing is published as a site. The
-dashboard is served locally, binds `127.0.0.1` with no `--host` flag, is
-read-only, and loads no remote assets — its audience is the operator of the
-repository, so the "usable without the repository" trigger does not apply.
+`W01` through `W09` are recorded `na`. Nothing is published as a site, and
+none is owed under [decision 0020](https://github.com/trsdn/.github/blob/v1.21.0/docs/decisions/0020-public-applications-need-a-site.md):
+Agent Trestle is a developer tool installed with `npm install -g` and
+configured through `.trestle/config.json` and `AGENTS.md`-style project files,
+not a product a non-developer installs or runs by name. The dashboard is
+served locally, binds `127.0.0.1` with no `--host` flag, is read-only, and
+loads no remote assets — its audience is the operator of the repository, so
+the "usable without the repository" trigger does not apply either.
 
 ## Agent Readiness
 
@@ -178,16 +220,28 @@ intentionally not archived.
 
 ## Overall state
 
-`Healthy`. No criterion fails. Both `partial` results are minor and neither
-affects security, recoverability, or reproducibility:
+`Needs work`. One criterion fails, `P13`, and it is not one of the critical
+criteria in [Overall State](https://github.com/trsdn/.github/blob/v1.21.0/docs/repository-quality-standard.md#overall-state),
+so the state is `Needs work` rather than `At risk`. `I06` remains `partial`
+for the reason recorded there: a manual version bump that a release gate
+already prevents from drifting. Remediation for `P13` is one command for the
+maintainer: `gh workflow enable codeql.yml`.
 
-- `P09` is a first-run timing gap in a workflow that is already wired up.
-- `I06` is a manual version bump that a release gate already prevents from
-  drifting.
+## Open gaps
+
+- `P13` (fail): the repository's own CodeQL workflow is disabled. See the
+  finding at the top of this document.
+- `I06` (partial): the npm package version is bumped by hand in
+  `package.json` rather than derived from the tag by a build step, though
+  `scripts/release.mjs verify` refuses a release where it disagrees with the
+  tag or the changelog.
+
+Every other applicable criterion is `pass`, and every `na` result above
+carries its own rationale.
 
 ## Reassessment
 
 The record ages out after 183 days, at which point the badge renders as stale
-and the conformance check fails. Reassess by 2027-03-03, or sooner if the
+and the conformance check fails. Reassess by 2027-03-22, or sooner if the
 standard publishes a new version, and update both this document and
 `.github/conformance.yml` together.
