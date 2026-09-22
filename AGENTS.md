@@ -185,6 +185,19 @@ request:**
 - Never echo, log, or persist an environment variable that may hold a
   credential, and never weaken the prompt/secret redaction in
   `src/copilot/process-adapter.mjs` or `src/review/process-adapter.mjs`.
+- **If a credential this repository references is exposed**, stop and tell
+  the maintainer (`@trsdn`) immediately; do not attempt to rotate it
+  yourself. The only one that exists today is `STATS_TOKEN`, an optional
+  fine-grained PAT [`.github/workflows/stats.yml`](.github/workflows/stats.yml)
+  can use to count private repositories in the activity card — it is not
+  currently set, and `P09` does not require it. If it is ever configured and
+  is exposed, revoke the PAT at
+  [github.com/settings/tokens](https://github.com/settings/tokens?type=beta),
+  generate a replacement scoped the same way, and replace the GitHub
+  repository secret from **Settings → Secrets and variables → Actions**,
+  which only `@trsdn` can reach. Publishing to npm needs no credential at
+  all: it authenticates through OIDC trusted publishing, so there is nothing
+  to rotate there.
 
 **Weakening a safety property counts as a destructive change.** Do not delete,
 skip, or loosen a test to make it pass, do not relax the coverage thresholds,
